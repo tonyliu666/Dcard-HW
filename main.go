@@ -1,100 +1,53 @@
-// package main
-
-// // use golang gin framework
-// import (
-
-// 	"github.com/gin-gonic/gin"
-// )
-
-// func init() {
-// 	DBconnect()
-// }
-
-// var DBconnect = func() {
-// 	// connect to database
-
-// }
-
-// func main() {
-
-// 	// use gin framework
-// 	r := gin.Default()
-
-// 	v1 := r.Group("/api/v1")
-// 	AddUserRouter(v1)
-
-// 	// define route
-// 	r.GET("/", func(c *gin.Context) {
-// 		c.JSON(200, gin.H{
-// 			"message": "Hello World",
-// 		})
-// 	})
-
-// 	// run server
-// 	r.Run(":8080")
-
-// }
 package main
 
 import (
 	"database/sql"
 	"fmt"
+	"os"
 
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
+	_ "github.com/joho/godotenv/autoload"
 )
 
-const (
-	host     = "localhost"
-	port     = 5434
-	user     = "postgres"
-	password = "t870101"
+// read from .emv file
+var (
+	host     = os.Getenv("DB_HOST")
+	port     = os.Getenv("DB_PORT")
+	user     = os.Getenv("DB_USERNAME")
+	dbName   = os.Getenv("DB_NAME")
+	password = os.Getenv("DB_PASSWORD")
+	sslmode  = os.Getenv("DB_SSLMODE")
+
 )
 
 func init() {
 	DBconnect()
-	DBconstruct()
 }
 
 var db *sql.DB
 
 func DBconnect() {
 	// connect to the database
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=disable",
-		host, port, user, password)
+	// read the connection parameters
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		host, port, user, password, dbName, sslmode)
 
+	log.Info(psqlInfo)
+	// open a database connection
 	var err error
 	db, err = sql.Open("postgres", psqlInfo)
 	if err != nil {
 		log.Error(err)
 		return
 	}
-
-	// check the connection
 	err = db.Ping()
 	if err != nil {
-		log.Error(err)
+		log.Error("Error: Could not establish a connection with the database")
 		return
 	}
-	log.Info("Successfully connected to the database!")
-}
+	log.Info("Connected to the database")
 
-func DBconstruct() {
-	// create the advertisement table
-	createStmt := `
-		CREATE TABLE IF NOT EXISTS advertisement (
-			id SERIAL PRIMARY KEY,
-			title TEXT,
-			start_at TIMESTAMP,
-			end_at TIMESTAMP,
-			conditions JSONB
-		)
-	`
-	_, err := db.Exec(createStmt)
-	if err != nil {
-		log.Error(err)
-		return
-	}
 }
 
 func main() {
@@ -106,20 +59,6 @@ func main() {
 
 	// Insert a new advertisement into the database
 	// conditions is a JSONB type, contain the field like age,gender,country and platform
-
-	insertStmt := `
-		INSERT INTO advertisement (title, start_at, end_at, conditions)
-		VALUES ($1, $2, $3, $4)
-	`
-	_, err := db.Exec(insertStmt, "Ad1", "2021-01-01", "2021-12-31", `{"age": 18,
-		"gender": "M", "country": "US", "platform": "ios"}`)
-	
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	
-	defer db.Close()
 
 	// Query the database for the advertisement
 	rows, err := db.Query("SELECT id, title, start_at, end_at, conditions FROM advertisement")

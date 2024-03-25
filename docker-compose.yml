@@ -1,0 +1,25 @@
+### create postgresql database and backend user 
+
+version: '3.8'
+
+services:
+  db:
+    image: postgres:12
+    restart: always
+    environment:
+      POSTGRES_USER: dcard_user
+      POSTGRES_PASSWORD: user_password
+      POSTGRES_DB: dcard_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./database/:/docker-entrypoint-initdb.d/
+  backend:
+    image: dcard:latest
+    restart: always
+    depends_on:
+      - db
+    environment:
+      DB_HOST: postgres
+      
+
