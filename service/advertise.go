@@ -24,28 +24,11 @@ type ADRequest struct {
 }
 
 func CreateADs(c *gin.Context) {
-	// get the post request parameters
-	// create a new ad in the database
-	/*
-		curl -X POST -H "Content-Type: application/json" \
-		"http://<host>/api/v1/ad" \ --data '{
-		"title" "AD 55",
-		"startAt" "2023-12-10T03:00:00.000Z", "endAt" "2023-12-31T16:00:00.000Z", "conditions": {
-		{
-		"ageStart": 20,
-		"ageEnd": 30,
-		"country: ["TW", "JP"], "platform": ["android", "ios"]
-		} }
-		}
-	*/
-
 	var adRequest ADRequest
 	if err := c.ShouldBindJSON(&adRequest); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	log.Info(adRequest)
 
 	title := adRequest.Title
 	startAtStr := adRequest.StartAt
@@ -59,26 +42,51 @@ func CreateADs(c *gin.Context) {
 	if err != nil {
 		log.Error(err)
 	}
-	// convert endAt string to time.Time
+	// // convert endAt string to time.Time
 	endAt, err := time.Parse(time.RFC3339, endAtStr)
 	if err != nil {
 		log.Error(err)
 	}
-
-	// create a new ad in the database
-	ad := model.User{
-		Title:   title,
-		StartAt: startAt,
-		EndAt:   endAt,
-		//convert the conditions to a string
-		Conditions: fmt.Sprintf("%v", conditions),
+	
+	country := "["
+	for i, v := range conditions.Country {
+		if i == len(conditions.Country)-1 {
+			country += fmt.Sprintf(`"%s"`, v)
+		} else {
+			country += fmt.Sprintf(`"%s",`, v)
+		}
 	}
-	// get the db variable from the middleware
-	db := middleware.GetDB()
-	_, err = db.Exec("INSERT INTO advertisement (title, start_at, end_at, conditions) VALUES ($1, $2, $3, $4)", ad.Title, ad.StartAt, ad.EndAt, ad.Conditions)
+	country += "]"
+
+	platform := "["
+	for i, v := range conditions.Platform {
+		if i == len(conditions.Platform)-1 {
+			platform += fmt.Sprintf(`"%s"`, v)
+		} else {
+			platform += fmt.Sprintf(`"%s",`, v)
+		}
+	}
+	platform += "]"
+	
+	log.Info(country, platform)
+	
+	conditionsStr := fmt.Sprintf(`{"ageStart": %d, "ageEnd": %d, "country": %s, "platform": %s}`, conditions.AgeStart, conditions.AgeEnd, country, platform)
+
+	log.Info(conditionsStr)
+	//conditionsStr := fmt.Sprintf(`{"ageStart": %d, "ageEnd": %d, "country": %s, "platform": %s}`, conditions.AgeStart, conditions.AgeEnd, conditions.Country, conditions.Platform)
+	ad := model.User{
+		Title:      title,
+		StartAt:    startAt,
+		EndAt:      endAt,
+		Conditions: conditionsStr,
+	}
+
+	log.Info(ad.Title, ad.StartAt, ad.EndAt, ad.Conditions)
+
+	err = CreateDbField(&ad)
 
 	if err != nil {
-		log.Error(err)
+		log.Error("insert failed: ", err)
 	}
 
 	// send the data to the client
@@ -86,6 +94,21 @@ func CreateADs(c *gin.Context) {
 		"message": "Ad created successfully",
 		"ad":      ad,
 	})
+}
+
+func CreateDbField(ad *model.User) error {
+	// get the db variable from the middleware
+	db := middleware.GetDB()
+	// create the fields in the database
+
+	insertStmt := `INSERT INTO advertisement (title, start_at, end_at, conditions) VALUES ($1, $2, $3, $4)`
+	// change the format of fields country, platform in ad.Conditions to "country": ["TW", "JP","US"], "platform": ["android", "ios"]
+
+	_, err := db.Exec(insertStmt, ad.Title, ad.StartAt, ad.EndAt, ad.Conditions)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetADs(c *gin.Context) {

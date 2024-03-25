@@ -40,7 +40,6 @@ func DBconnect() (*sql.DB, error){
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		host, port, user, password, dbName, sslmode)
 
-	log.Info(psqlInfo)
 	// open a database connection
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {

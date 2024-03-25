@@ -14,7 +14,7 @@ func TestDBconnect(t *testing.T) {
 
 	// open a database connection
 	var err error
-	db, err = sql.Open("postgres", psqlInfo)
+	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
 		t.Errorf("Error: Could not establish a connection with the database")
 		return
