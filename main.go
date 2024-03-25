@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"os"
 
+	"dcardapp/routing"
+
+	"github.com/gin-gonic/gin"
+	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
-	_ "github.com/joho/godotenv/autoload"
+
+	"dcardapp/middleware"
 )
 
 // read from .emv file
@@ -18,16 +23,18 @@ var (
 	dbName   = os.Getenv("DB_NAME")
 	password = os.Getenv("DB_PASSWORD")
 	sslmode  = os.Getenv("DB_SSLMODE")
-
 )
 
 func init() {
-	DBconnect()
+	db,err := DBconnect()
+	if err != nil {
+		log.Error(err)
+	}
+	AddDBToMiddleware(db)
 }
 
-var db *sql.DB
 
-func DBconnect() {
+func DBconnect() (*sql.DB, error){
 	// connect to the database
 	// read the connection parameters
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -35,50 +42,39 @@ func DBconnect() {
 
 	log.Info(psqlInfo)
 	// open a database connection
-	var err error
-	db, err = sql.Open("postgres", psqlInfo)
+	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
-		log.Error(err)
-		return
+		return nil, err
 	}
 	err = db.Ping()
 	if err != nil {
-		log.Error("Error: Could not establish a connection with the database")
-		return
+		return nil, fmt.Errorf("Error: Could not establish a connection with the database")
 	}
 	log.Info("Connected to the database")
+	return db, nil
+}
 
+func AddDBToMiddleware(db *sql.DB) {
+	middleware.Init(db)
+}
+
+func NewRouter() *gin.Engine {
+	r := gin.New()
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
+	r.GET("/ping", func(c *gin.Context) {
+		c.String(200, "pong")
+	})
+	api := r.Group("/api/v1")
+
+	routing.AddUserRouter(api)
+	return r
 }
 
 func main() {
 	// create an entry for the advertisement in the database
-	if db == nil {
-		log.Error("Database connection is nil")
-		return
-	}
+	// create router
+	router := NewRouter()
+	router.Run(":8080")
 
-	// Insert a new advertisement into the database
-	// conditions is a JSONB type, contain the field like age,gender,country and platform
-
-	// Query the database for the advertisement
-	rows, err := db.Query("SELECT id, title, start_at, end_at, conditions FROM advertisement")
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var id int
-		var title string
-		var startAt string
-		var endAt string
-		var conditions string
-		err = rows.Scan(&id, &title, &startAt, &endAt, &conditions)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		log.Info(title, startAt, endAt, conditions)
-	}
 }
