@@ -120,6 +120,7 @@ func GetADsWithConditions(c *gin.Context) {
 
 	db := middleware.GetDB()
 	// get the all the parameters from the client
+	// wrap the parameters in the query
 
 	age := params.Get("age")
 	country := params.Get("country")
@@ -128,7 +129,7 @@ func GetADsWithConditions(c *gin.Context) {
 	offset, _ := strconv.Atoi(params.Get("offset"))
 	limit, _ := strconv.Atoi(params.Get("limit"))
 	
-	
+
 	// check whether country,platform and gender params are in each row of the database
 	// if the country and platform are in the conditions of the row, then the row is selected
 	// As same as above statement, the age should be between the ageStart and ageEnd
@@ -136,6 +137,8 @@ func GetADsWithConditions(c *gin.Context) {
 
 	query := `SELECT title, end_at, conditions FROM advertisement WHERE conditions @> '{"country": ["` + country + `"], "platform": ["` + platform + `"], "gender": "` + gender + `"}'
 	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
+
+	log.Info(query)
 
 	rows, err := db.Query(query, age)
 	
@@ -151,7 +154,7 @@ func GetADsWithConditions(c *gin.Context) {
 	for rows.Next() {
 		if index >= offset {
 			ad := model.User{}
-			err := rows.Scan(&ad.Title, &ad.StartAt, &ad.EndAt, &ad.Conditions)
+			err := rows.Scan(&ad.Title,&ad.EndAt, &ad.Conditions)
 			if err != nil {
 				log.Error(err)
 			}
