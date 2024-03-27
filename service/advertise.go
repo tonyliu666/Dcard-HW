@@ -3,6 +3,7 @@ package service
 import (
 	"dcardapp/middleware"
 	"dcardapp/model"
+	"dcardapp/param"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -117,44 +118,47 @@ func GetADsWithConditions(c *gin.Context) {
 	// get the ads with some conditions
 	// get the db variable from the middleware
 	params := c.Request.URL.Query()
-
 	db := middleware.GetDB()
+	
 	// get the all the parameters from the client
 	// wrap the parameters in the query
-
-	age := params.Get("age")
-	country := params.Get("country")
-	gender := params.Get("gender")
-	platform := params.Get("platform")
 	offset, _ := strconv.Atoi(params.Get("offset"))
 	limit, _ := strconv.Atoi(params.Get("limit"))
-	
+	query := param.Query{
+		Offset: offset,
+		Limit:  limit,
+		Age:    params.Get("age"),
+		Country: params.Get("country"),
+		Platform: params.Get("platform"),
+		Gender: params.Get("gender"),
+	}
 
 	// check whether country,platform and gender params are in each row of the database
 	// if the country and platform are in the conditions of the row, then the row is selected
 	// As same as above statement, the age should be between the ageStart and ageEnd
 	// country,platform,gender,and age are the variables of the conditions,so pass them to the query
 
-	query := `SELECT title, end_at, conditions FROM advertisement WHERE conditions @> '{"country": ["` + country + `"], "platform": ["` + platform + `"], "gender": "` + gender + `"}'
+	dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + query.Country + `"], "platform": ["` + query.Platform + `"], "gender": "` + query.Gender + `"}'
 	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
 
-	log.Info(query)
+	rows, err := db.Query(dbQuery, query.Age)
 
-	rows, err := db.Query(query, age)
-	
 	if err != nil {
 		log.Error("don't find the suitable advertise for you: ", err)
 	}
 	defer rows.Close()
 
-	// create a slice to store the satisfy ads
-	satisfyADs := []model.User{}
+	// create a slice to store the satisfy ads with the query.Response type
+
+	satisfyADs := []param.Response{}
+	
 	index := 0
 	// select only limit number of rows, the number is equal to limit and the ads start from off
 	for rows.Next() {
 		if index >= offset {
-			ad := model.User{}
-			err := rows.Scan(&ad.Title,&ad.EndAt, &ad.Conditions)
+			ad := param.Response{}
+			// on;y need title and endAt
+			err := rows.Scan(&ad.Title, &ad.EndAt)
 			if err != nil {
 				log.Error(err)
 			}
@@ -175,7 +179,13 @@ func GetADsWithConditions(c *gin.Context) {
 		"endAt" "2023-12-31T16:00:00.000Z"}
 	*/
 
+	// only return title and endAt to the client
+	// send the data to the client
 	c.JSON(200, gin.H{
-		"outputs": satisfyADs,
+		"items":      satisfyADs,
+		"message": "Ad created successfully",
 	})
+
+	
+	
 }
