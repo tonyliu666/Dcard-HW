@@ -123,28 +123,22 @@ func GetADsWithConditions(c *gin.Context) {
 
 	age := params.Get("age")
 	country := params.Get("country")
-
 	gender := params.Get("gender")
 	platform := params.Get("platform")
 	offset, _ := strconv.Atoi(params.Get("offset"))
 	limit, _ := strconv.Atoi(params.Get("limit"))
-
 	
-	// gender should also be selected from the conditions
-
-	log.Info(
-		"age: ", age,
-		"country:", country,
-		"gender:", gender,
-	)
 	
-	queryStats := `SELECT title, start_at, end_at, conditions FROM advertisement WHERE conditions @> $1::jsonb AND $2::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
+	// check whether country,platform and gender params are in each row of the database
+	// if the country and platform are in the conditions of the row, then the row is selected
+	// As same as above statement, the age should be between the ageStart and ageEnd
+	// country,platform,gender,and age are the variables of the conditions,so pass them to the query
+
+	query := `SELECT title, end_at, conditions FROM advertisement WHERE conditions @> '{"country": ["` + country + `"], "platform": ["` + platform + `"], "gender": "` + gender + `"}'
+	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
+
+	rows, err := db.Query(query, age)
 	
-	// check whether country and platform params are in each row of the database
-	// if the country and platform are in the conditions of the row, then the row is selected  
-
-	rows, err := db.Query(queryStats, `{"country": ["`+country+`"], "platform": ["`+platform+`"]}`, age)
-
 	if err != nil {
 		log.Error("don't find the suitable advertise for you: ", err)
 	}
