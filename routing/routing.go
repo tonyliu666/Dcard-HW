@@ -10,4 +10,5 @@ import (
 func AddUserRouter(r *gin.RouterGroup) {
 	r.POST("/ad", service.CreateADs)
 	r.GET("/ad", service.GetADs)
+	r.GET("/ad/:offset/:limit/:age/:gender/:country/:platform", service.GetADsWithConditions)
 }

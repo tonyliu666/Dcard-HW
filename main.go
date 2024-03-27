@@ -59,6 +59,7 @@ func AddDBToMiddleware(db *sql.DB) {
 
 func NewRouter() *gin.Engine {
 	r := gin.New()
+	r.SetTrustedProxies([]string{"127.0.0.1"})
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.GET("/ping", func(c *gin.Context) {
