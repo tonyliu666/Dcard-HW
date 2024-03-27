@@ -76,7 +76,6 @@ func TestGetADsWithConditions(t *testing.T) {
 	queryStats := `SELECT title, start_at, end_at, conditions FROM advertisement WHERE conditions @> $1::jsonb AND $2::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
 	rows, err := db.Query(queryStats, `{"country": ["`+country+`"], "platform": ["`+platform+`"]}`, age)
 	
-	
 	if err != nil {
 		t.Errorf("don't find the suitable advertise for you: %v", err)
 	}

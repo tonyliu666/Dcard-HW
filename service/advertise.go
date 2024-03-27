@@ -5,6 +5,7 @@ import (
 	"dcardapp/model"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -36,9 +37,6 @@ func CreateADs(c *gin.Context) {
 	endAtStr := adRequest.EndAt
 	conditions := adRequest.Conditions
 
-
-	// convert startAt string to time.Time
-	log.Info(startAtStr, endAtStr, endAtStr, conditions)
 	// the time format is ISO 8601 format
 	startAt, err := time.Parse(time.RFC3339, startAtStr)
 	if err != nil {
@@ -70,12 +68,10 @@ func CreateADs(c *gin.Context) {
 	}
 
 	platform += "]"
-	
+
 	gender := fmt.Sprintf(`"%s"`, conditions.Gender)
 	conditionsStr := fmt.Sprintf(`{"ageStart": %d, "ageEnd": %d,"gender": %s, "country": %s, "platform": %s}`, conditions.AgeStart, conditions.AgeEnd, gender, country, platform)
 
-	log.Info(conditionsStr)
-	
 	ad := model.User{
 		Title:      title,
 		StartAt:    startAt,
@@ -102,49 +98,12 @@ func CreateDbField(ad *model.User) error {
 	// create the fields in the database
 
 	insertStmt := `INSERT INTO advertisement (title, start_at, end_at, conditions) VALUES ($1, $2, $3, $4)`
-	
+
 	_, err := db.Exec(insertStmt, ad.Title, ad.StartAt, ad.EndAt, ad.Conditions)
 	if err != nil {
 		return err
 	}
 	return nil
-}
-
-// get all the advertisements
-func GetADs(c *gin.Context) {
-	// get all the ads from the database
-	// return the data to the client
-	// get the db variable from the middleware
-	db := middleware.GetDB()
-
-	// test database connectivity
-	err := db.Ping()
-	if err != nil {
-		log.Error("Error: Could not establish a connection with the database")
-		return
-	}
-
-	log.Info("Connected to the database")
-	rows, err := db.Query("SELECT title, start_at, end_at, conditions FROM advertisement")
-	if err != nil {
-		log.Error(err)
-	}
-	defer rows.Close()
-
-	ads := []model.User{}
-	for rows.Next() {
-		ad := model.User{}
-		err := rows.Scan(&ad.Title, &ad.StartAt, &ad.EndAt, &ad.Conditions)
-		if err != nil {
-			log.Error(err)
-		}
-		ads = append(ads, ad)
-	}
-
-	// send the data to the client
-	c.JSON(200, gin.H{
-		"ads": ads,
-	})
 }
 
 // get the advertisemnet with some conditions
@@ -154,30 +113,72 @@ Android iOS，
 "http://<hos t>/api/v1/ad?offset =10&limit=3&age=24&gender=F&country=TW&platform=ios"
 */
 
-
 func GetADsWithConditions(c *gin.Context) {
 	// get the ads with some conditions
 	// get the db variable from the middleware
+	params := c.Request.URL.Query()
+
 	db := middleware.GetDB()
-
 	// get the all the parameters from the client
-	// params := c.Params
-	// age := params.Get("age")
-	// country := params.Get("country")
-	// gender := params.Get("gender")
-	// platform := params.Get("platform")
-	// get the ads with the conditions
-	// send the data to the client
 
-	err := db.Ping()
+	age := params.Get("age")
+	country := params.Get("country")
+
+	gender := params.Get("gender")
+	platform := params.Get("platform")
+	offset, _ := strconv.Atoi(params.Get("offset"))
+	limit, _ := strconv.Atoi(params.Get("limit"))
+
+	
+	// gender should also be selected from the conditions
+
+	log.Info(
+		"age: ", age,
+		"country:", country,
+		"gender:", gender,
+	)
+	
+	queryStats := `SELECT title, start_at, end_at, conditions FROM advertisement WHERE conditions @> $1::jsonb AND $2::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
+	
+	// check whether country and platform params are in each row of the database
+	// if the country and platform are in the conditions of the row, then the row is selected  
+
+	rows, err := db.Query(queryStats, `{"country": ["`+country+`"], "platform": ["`+platform+`"]}`, age)
+
 	if err != nil {
-		log.Error("Error: Could not establish a connection with the database")
-		return
+		log.Error("don't find the suitable advertise for you: ", err)
+	}
+	defer rows.Close()
+
+	// create a slice to store the satisfy ads
+	satisfyADs := []model.User{}
+	index := 0
+	// select only limit number of rows, the number is equal to limit and the ads start from off
+	for rows.Next() {
+		if index >= offset {
+			ad := model.User{}
+			err := rows.Scan(&ad.Title, &ad.StartAt, &ad.EndAt, &ad.Conditions)
+			if err != nil {
+				log.Error(err)
+			}
+			satisfyADs = append(satisfyADs, ad)
+			// if the length of the satisfyADs is equal to the limit, break the loop
+			if len(satisfyADs) == limit {
+				break
+			}
+		}
+		index++
 	}
 
+	// the result would be like this:
+	/*
+		{"title": "AD 31",
+		"endAt" "2023-12-30T12:00:00.000Z"}
+		{"title": "AD 10",
+		"endAt" "2023-12-31T16:00:00.000Z"}
+	*/
 
-	
+	c.JSON(200, gin.H{
+		"outputs": satisfyADs,
+	})
 }
-	
-
-	
