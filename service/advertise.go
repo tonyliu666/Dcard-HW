@@ -157,7 +157,6 @@ func GetADsWithConditions(c *gin.Context) {
 	for rows.Next() {
 		if index >= offset {
 			ad := param.Response{}
-			// on;y need title and endAt
 			err := rows.Scan(&ad.Title, &ad.EndAt)
 			if err != nil {
 				log.Error(err)
@@ -183,9 +182,5 @@ func GetADsWithConditions(c *gin.Context) {
 	// send the data to the client
 	c.JSON(200, gin.H{
 		"items":      satisfyADs,
-		"message": "Ad created successfully",
 	})
-
-	
-	
 }

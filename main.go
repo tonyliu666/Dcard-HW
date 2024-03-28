@@ -2,13 +2,11 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
-	"os"
-
+	"dcardapp/config"
 	"dcardapp/routing"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 
@@ -16,29 +14,20 @@ import (
 )
 
 // read from .emv file
-var (
-	host     = os.Getenv("DB_HOST")
-	port     = os.Getenv("DB_PORT")
-	user     = os.Getenv("DB_USERNAME")
-	dbName   = os.Getenv("DB_NAME")
-	password = os.Getenv("DB_PASSWORD")
-	sslmode  = os.Getenv("DB_SSLMODE")
-)
 
 func init() {
-	db,err := DBconnect()
+	db, err := DBconnect()
 	if err != nil {
 		log.Error(err)
 	}
 	AddDBToMiddleware(db)
 }
 
-
-func DBconnect() (*sql.DB, error){
+func DBconnect() (*sql.DB, error) {
 	// connect to the database
 	// read the connection parameters
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbName, sslmode)
+		config.Host, config.Port, config.User, config.Password, config.DbName, config.Sslmode)
 
 	// open a database connection
 	db, err := sql.Open("postgres", psqlInfo)
@@ -47,7 +36,7 @@ func DBconnect() (*sql.DB, error){
 	}
 	err = db.Ping()
 	if err != nil {
-		return nil, fmt.Errorf("Error: Could not establish a connection with the database")
+		return nil, fmt.Errorf("cannot connect to the database: %v", err)
 	}
 	log.Info("Connected to the database")
 	return db, nil

@@ -1,7 +1,9 @@
 // test database connection
-package main 
+package main
+
 import (
 	"database/sql"
+	"dcardapp/config"
 	"fmt"
 	"testing"
 )
@@ -10,7 +12,7 @@ func TestDBconnect(t *testing.T) {
 	// connect to the database
 	// read the connection parameters
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbName, sslmode)
+		config.Host, config.Port, config.User, config.Password, config.DbName, config.Sslmode)
 
 	// open a database connection
 	var err error

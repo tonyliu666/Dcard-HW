@@ -2,15 +2,22 @@ package service
 
 import (
 	"database/sql"
+	"dcardapp/param"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http/httptest"
 	"net/url"
 	"os"
+	"time"
 
 	// load the .env file
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -33,7 +40,8 @@ func TestDBconnect(t *testing.T) {
 	var err error
 	db, err := sql.Open("postgres", psqlInfo)
 
-	defer db.Close()
+
+	
 	if err != nil {
 		t.Errorf("Error: Could not establish a connection with the database")
 	}
@@ -47,47 +55,64 @@ func TestDBconnect(t *testing.T) {
 
 }
 func TestGetADsWithConditions(t *testing.T) {
-	query := "http://localhost:8080/api/v1/ad?offset=10&limit=3&age=24&gender=F&country=TW&platform=ios"
-	// get the parameters from the query
-	myUrl, _ := url.Parse(query)
-	params, _ := url.ParseQuery(myUrl.RawQuery)
-	fmt.Println(params)
+	// create the moke gin context
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	// set the query parameters
+	q := url.Values{}
+	q.Add("age", "30")
+	q.Add("country", "TW")
+	q.Add("platform", "android")
+	q.Add("gender", "F")
+	q.Add("offset", "0")
+	q.Add("limit", "3")
 
-	age := params.Get("age")
-	country := params.Get("country")
-	//gender := params.Get("gender")
-	platform := params.Get("platform")
-	// get the db variable from the middleware
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbName, sslmode)
-	// open a database connection
-	var err error
-	db, err := sql.Open("postgres", psqlInfo)
+	// set up a fake request with the parameters q which is the query parameters
+	c.Request = httptest.NewRequest("GET", "/api/v1/ad", nil)
 
-	defer db.Close()
+	c.Request.URL = &url.URL{RawQuery: q.Encode()}
+
+	// check the return json data
+	GetADsWithConditions(c)
+
+	// check the contents of c.JSON
+	if c.Writer.Status() != 200 {
+		t.Errorf("status code is not 200")
+	}
+
+	// how to check the contents of c.JSON
+
+	log.Info("get ad with conditions")
+
+	// check the contents of JSON is equal to the expected value
+	// if the contents are not equal, then print the error message
+	// and the expected value
+
+	var response struct {
+		Items []param.Response `json:"items"`
+	}
+
+	b, err := io.ReadAll(w.Body)
 
 	if err != nil {
-		t.Errorf("Error: Could not establish a connection with the database")
+		t.Errorf("error: %v", err)
 	}
 
-	// get the data from the database depending on the above params variables
+	err = json.Unmarshal(b, &response)
 
-	// find the ad with the conditions that age is between start_at and end_at and country is equal to country variable and platform is equal to platform variable
-	queryStats := `SELECT title, start_at, end_at, conditions FROM advertisement WHERE conditions @> $1::jsonb AND $2::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
-	rows, err := db.Query(queryStats, `{"country": ["`+country+`"], "platform": ["`+platform+`"]}`, age)
-	
 	if err != nil {
-		t.Errorf("don't find the suitable advertise for you: %v", err)
+		t.Errorf("Unmarshal data error: %v", err)
 	}
-	defer rows.Close()
 
-	// print the rows data
-	for rows.Next() {
-		var title, start_at, end_at, conditions string
-		err := rows.Scan(&title, &start_at, &end_at, &conditions)
-		if err != nil {
-			t.Errorf("scan failed: %v", err)
-		}
-		fmt.Println(title, start_at, end_at, conditions)
+	// response.EndAt needs to be in time.Time format, like 2024-12-27T16:23:15Z
+	endAt, _ := time.Parse(time.RFC3339, "2024-12-27T16:23:15Z")
+
+	// check the response
+	if response.Items[0].Title != "AD403" || response.Items[0].EndAt != endAt {
+		t.Errorf("response: %v", response)
 	}
+
+	// return pass
+	t.Logf("response: %v", response)
 }
