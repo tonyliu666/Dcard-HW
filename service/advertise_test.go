@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"time"
 
 	// load the .env file
@@ -18,16 +17,8 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
-)
 
-var (
-	host = os.Getenv("DB_HOST")
-	port = os.Getenv("DB_PORT")
-	user = os.Getenv("DB_USERNAME")
-
-	dbName   = os.Getenv("DB_NAME")
-	password = os.Getenv("DB_PASSWORD")
-	sslmode  = os.Getenv("DB_SSLMODE")
+	"github.com/stretchr/testify/assert"
 )
 
 
@@ -134,10 +125,21 @@ func TestGetADsWithConditions(t *testing.T) {
 	endAt, _ := time.Parse(time.RFC3339, "2024-12-27T16:23:15Z")
 
 	// check the response
-	if response.Items[0].Title != "AD403" || response.Items[0].EndAt != endAt {
-		t.Errorf("response: %v", response)
-	}
+	assert.Equal(t, response.Items[0].Title, "AD403")
+	assert.Equal(t, response.Items[0].EndAt, endAt)
 
 	// return pass
 	t.Logf("response: %v", response)
+}
+
+func TestCheckADExist(t *testing.T) {
+	// create the moke gin context
+	title := []string{"AD504", "AD203", "AD35"}
+	count := 0
+	for _, v := range title {
+		if CheckADExist(v){
+			count++
+		}
+	}
+	assert.Equal(t, count, 3)
 }

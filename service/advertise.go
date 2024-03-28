@@ -6,6 +6,7 @@ import (
 	"dcardapp/param"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -26,6 +27,20 @@ type ADRequest struct {
 	} `json:"conditions"`
 }
 
+func CheckADExist(title string) bool {
+	db := middleware.GetDB()
+	// check the advertisement is created before 
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM advertisement WHERE title = $1", title).Scan(&count)
+	if err != nil {
+		log.Error(err)
+	}
+	if count > 0 {
+		return true
+	}
+	return false
+}
+
 func CreateADs(c *gin.Context) {
 	var adRequest ADRequest
 	if err := c.ShouldBindJSON(&adRequest); err != nil {
@@ -37,6 +52,13 @@ func CreateADs(c *gin.Context) {
 	startAtStr := adRequest.StartAt
 	endAtStr := adRequest.EndAt
 	conditions := adRequest.Conditions
+
+	// check the advertisement is created before 
+
+	if CheckADExist(title) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "The advertisement is created before"})
+		return
+	}
 
 	// the time format is ISO 8601 format
 	startAt, err := time.Parse(time.RFC3339, startAtStr)
@@ -118,18 +140,22 @@ func GetADsWithConditions(c *gin.Context) {
 	// get the db variable from the middleware
 	params := c.Request.URL.Query()
 	db := middleware.GetDB()
-	
+
 	// get the all the parameters from the client
 	// wrap the parameters in the query
 	offset, _ := strconv.Atoi(params.Get("offset"))
-	limit, _ := strconv.Atoi(params.Get("limit"))
+	limit := 5  // default limit is 5
+	if params.Get("limit") != "" {
+		limit, _ = strconv.Atoi(params.Get("limit"))
+	}
+	
 	query := param.Query{
-		Offset: offset,
-		Limit:  limit,
-		Age:    params.Get("age"),
-		Country: params.Get("country"),
+		Offset:   offset,
+		Limit:    limit,
+		Age:      params.Get("age"),
+		Country:  params.Get("country"),
 		Platform: params.Get("platform"),
-		Gender: params.Get("gender"),
+		Gender:   params.Get("gender"),
 	}
 
 	// check whether country,platform and gender params are in each row of the database
@@ -150,8 +176,8 @@ func GetADsWithConditions(c *gin.Context) {
 	// create a slice to store the satisfy ads with the query.Response type
 
 	satisfyADs := []param.Response{}
-	
-	index := 0
+
+	index := 1
 	// select only limit number of rows, the number is equal to limit and the ads start from off
 	for rows.Next() {
 		if index >= offset {
@@ -169,17 +195,16 @@ func GetADsWithConditions(c *gin.Context) {
 		index++
 	}
 
-	// the result would be like this:
-	/*
-		{"title": "AD 31",
-		"endAt" "2023-12-30T12:00:00.000Z"}
-		{"title": "AD 10",
-		"endAt" "2023-12-31T16:00:00.000Z"}
-	*/
+	// now need to sort the satisfyADs by the endAt
+	// sort the satisfyADs by the endAt
+
+	sort.Slice(satisfyADs, func(i, j int) bool {
+		return satisfyADs[i].EndAt.Before(satisfyADs[j].EndAt)
+	})
 
 	// only return title and endAt to the client
 	// send the data to the client
 	c.JSON(200, gin.H{
-		"items":      satisfyADs,
+		"items": satisfyADs,
 	})
 }
