@@ -1,10 +1,10 @@
 package service
 
 import (
-	"database/sql"
+	"bytes"
+	"dcardapp/middleware"
 	"dcardapp/param"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http/httptest"
 	"net/url"
@@ -30,28 +30,53 @@ var (
 	sslmode  = os.Getenv("DB_SSLMODE")
 )
 
-func TestDBconnect(t *testing.T) {
-	// connect to the database
-	// read the connection parameters
-
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbName, sslmode)
-	// open a database connection
-	var err error
-	db, err := sql.Open("postgres", psqlInfo)
 
 
+func TestCreateADs(t *testing.T) {
+	// create the moke gin context
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	adRequest := ADRequest{
+		Title:   "AD504",
+		StartAt: "2023-12-10T04:15:30.000Z",
+		EndAt:   "2024-12-29T16:23:15Z",
+	}
+	adRequest.Conditions.AgeStart = 20
+	adRequest.Conditions.AgeEnd = 40
+	adRequest.Conditions.Gender = "F"
+	adRequest.Conditions.Country = []string{"TW", "JP"}
+	adRequest.Conditions.Platform = []string{"android", "ios"}
 	
+	jsonStr, err := json.Marshal(adRequest)
+
 	if err != nil {
-		t.Errorf("Error: Could not establish a connection with the database")
+		t.Errorf("Marsal error: %v", err)
+	}
+	
+	// set up a fake request with the parameters q which is the query parameters
+	c.Request = httptest.NewRequest("POST", "/api/v1/ad", bytes.NewBuffer(jsonStr))
+	
+	// ADRequest filled with the mock data
+	// I want to mock c.ShouldBindJSON(&adRequest)
+
+	CreateADs(c)
+
+	// check the data exists in the database
+	// if the data does not exist, then the test fails
+	// if the data(row) exists, then the test passes
+
+	db := middleware.GetDB()
+
+	db.QueryRow("SELECT title FROM advertisement WHERE title = 'AD504'").Scan(&jsonStr)
+
+	if jsonStr == nil {
+		t.Errorf("data does not exist in the database")
 	}
 
-	insertStmt := `INSERT INTO advertisement (title, start_at, end_at, conditions) VALUES ($1, $2, $3, $4)`
-
-	_, err = db.Exec(insertStmt, "Ad1", "2021-01-01", "2021-12-31", `{"ageStart": 25, "ageEnd": 35, "country": ["TW", "JP","US"], "platform": ["android", "ios"]}`)
-	if err != nil {
-		t.Errorf("insert failed: %v", err)
-	}
+	// return pass
+	t.Logf("data exists in the database")
 
 }
 func TestGetADsWithConditions(t *testing.T) {

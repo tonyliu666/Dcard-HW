@@ -89,7 +89,6 @@ func CreateADs(c *gin.Context) {
 	// send the data to the client
 	c.JSON(200, gin.H{
 		"message": "Ad created successfully",
-		"ad":      ad,
 	})
 }
 
