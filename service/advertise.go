@@ -29,7 +29,7 @@ type ADRequest struct {
 
 func CheckADExist(title string) bool {
 	db := middleware.GetDB()
-	// check the advertisement is created before 
+	// check the advertisement is created before
 	var count int
 	err := db.QueryRow("SELECT COUNT(*) FROM advertisement WHERE title = $1", title).Scan(&count)
 	if err != nil {
@@ -41,39 +41,23 @@ func CheckADExist(title string) bool {
 	return false
 }
 
-func CreateADs(c *gin.Context) {
-	var adRequest ADRequest
-	if err := c.ShouldBindJSON(&adRequest); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	title := adRequest.Title
-	startAtStr := adRequest.StartAt
-	endAtStr := adRequest.EndAt
-	conditions := adRequest.Conditions
-
-	// check the advertisement is created before 
-
-	if CheckADExist(title) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "The advertisement is created before"})
-		return
-	}
+func RequestTransformToUser(adRequest ADRequest) (model.User, error) {
+	// process the request
 
 	// the time format is ISO 8601 format
-	startAt, err := time.Parse(time.RFC3339, startAtStr)
+	startAt, err := time.Parse(time.RFC3339, adRequest.StartAt)
 	if err != nil {
-		log.Error(err)
+		return model.User{}, err 
 	}
 	// // convert endAt string to time.Time
-	endAt, err := time.Parse(time.RFC3339, endAtStr)
+	endAt, err := time.Parse(time.RFC3339, adRequest.EndAt)
 	if err != nil {
 		log.Error(err)
 	}
 
 	country := "["
-	for i, v := range conditions.Country {
-		if i == len(conditions.Country)-1 {
+	for i, v := range adRequest.Conditions.Country {
+		if i == len(adRequest.Conditions.Country)-1 {
 			country += fmt.Sprintf(`"%s"`, v)
 		} else {
 			country += fmt.Sprintf(`"%s",`, v)
@@ -82,8 +66,8 @@ func CreateADs(c *gin.Context) {
 	country += "]"
 
 	platform := "["
-	for i, v := range conditions.Platform {
-		if i == len(conditions.Platform)-1 {
+	for i, v := range adRequest.Conditions.Platform {
+		if i == len(adRequest.Conditions.Platform)-1 {
 			platform += fmt.Sprintf(`"%s"`, v)
 		} else {
 			platform += fmt.Sprintf(`"%s",`, v)
@@ -92,21 +76,46 @@ func CreateADs(c *gin.Context) {
 
 	platform += "]"
 
-	gender := fmt.Sprintf(`"%s"`, conditions.Gender)
-	conditionsStr := fmt.Sprintf(`{"ageStart": %d, "ageEnd": %d,"gender": %s, "country": %s, "platform": %s}`, conditions.AgeStart, conditions.AgeEnd, gender, country, platform)
+	gender := fmt.Sprintf(`"%s"`, adRequest.Conditions.Gender)
+	conditionsStr := fmt.Sprintf(`{"ageStart": %d, "ageEnd": %d,"gender": %s, "country": %s, "platform": %s}`, adRequest.Conditions.AgeStart, adRequest.Conditions.AgeEnd, gender, country, platform)
 
-	ad := model.User{
-		Title:      title,
+	return model.User{
+		Title:      adRequest.Title,
 		StartAt:    startAt,
 		EndAt:      endAt,
 		Conditions: conditionsStr,
+	},nil
+}
+
+func CreateADs(c *gin.Context) {
+	var adRequest ADRequest
+	if err := c.ShouldBindJSON(&adRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	err = CreateDbField(&ad)
+	title := adRequest.Title
+	// startAtStr := adRequest.StartAt
+	// endAtStr := adRequest.EndAt
+	// conditions := adRequest.Conditions
 
+	// check the advertisement is created before
+
+	if CheckADExist(title) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "The advertisement is created before"})
+		return
+	}
+
+	ad, err := RequestTransformToUser(adRequest)
 	if err != nil {
-		log.Error("insert failed: ", err)
+		log.Error("request transform failed: ", err)
 	}
+
+	go CreateDbField(&ad)
+
+	// if err != nil {
+	// 	log.Error("insert failed: ", err)
+	// }
 
 	// send the data to the client
 	c.JSON(200, gin.H{
@@ -121,10 +130,12 @@ func CreateDbField(ad *model.User) error {
 
 	insertStmt := `INSERT INTO advertisement (title, start_at, end_at, conditions) VALUES ($1, $2, $3, $4)`
 
+	// check the advertisement is created before
 	_, err := db.Exec(insertStmt, ad.Title, ad.StartAt, ad.EndAt, ad.Conditions)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -144,11 +155,11 @@ func GetADsWithConditions(c *gin.Context) {
 	// get the all the parameters from the client
 	// wrap the parameters in the query
 	offset, _ := strconv.Atoi(params.Get("offset"))
-	limit := 5  // default limit is 5
+	limit := 5 // default limit is 5
 	if params.Get("limit") != "" {
 		limit, _ = strconv.Atoi(params.Get("limit"))
 	}
-	
+
 	query := param.Query{
 		Offset:   offset,
 		Limit:    limit,
