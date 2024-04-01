@@ -1,6 +1,8 @@
 package param
 
-import "time"
+import (
+	"time"
+)
 
 // Path: query/param.go
 

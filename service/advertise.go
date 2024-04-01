@@ -1,17 +1,23 @@
 package service
 
 import (
+	"database/sql"
 	"dcardapp/middleware"
 	"dcardapp/model"
 	"dcardapp/param"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+)
+
+var (
+	CreationCounter int
+	counterMutex    sync.Mutex
 )
 
 type ADRequest struct {
@@ -26,6 +32,27 @@ type ADRequest struct {
 		Platform []string `json:"platform"`
 	} `json:"conditions"`
 }
+
+
+func init() {
+	// Start the background goroutine to reset the counter
+	go ResetCreationCounter()
+}
+
+// restrict this counter value not over 3000
+func ResetCreationCounter() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		<-ticker.C
+		// Reset the counter to 0 at the beginning of each day
+		counterMutex.Lock()
+		CreationCounter = 0
+		counterMutex.Unlock()
+	}
+}
+
 
 func CheckADExist(title string) bool {
 	db := middleware.GetDB()
@@ -47,7 +74,7 @@ func RequestTransformToUser(adRequest ADRequest) (model.User, error) {
 	// the time format is ISO 8601 format
 	startAt, err := time.Parse(time.RFC3339, adRequest.StartAt)
 	if err != nil {
-		return model.User{}, err 
+		return model.User{}, err
 	}
 	// // convert endAt string to time.Time
 	endAt, err := time.Parse(time.RFC3339, adRequest.EndAt)
@@ -84,23 +111,31 @@ func RequestTransformToUser(adRequest ADRequest) (model.User, error) {
 		StartAt:    startAt,
 		EndAt:      endAt,
 		Conditions: conditionsStr,
-	},nil
+	}, nil
 }
 
 func CreateADs(c *gin.Context) {
+	counterMutex.Lock()
+    defer counterMutex.Unlock()
+
+	// counter + 1
+	if CreationCounter >= 3000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "The advertisement is created over the quota today, please try tomorrow"})
+		return
+	}
+	CreationCounter++
+
+
 	var adRequest ADRequest
+
 	if err := c.ShouldBindJSON(&adRequest); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	title := adRequest.Title
-	// startAtStr := adRequest.StartAt
-	// endAtStr := adRequest.EndAt
-	// conditions := adRequest.Conditions
 
-	// check the advertisement is created before
-
+	// can't asynchronusly do this function, should check the ad exist first
 	if CheckADExist(title) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "The advertisement is created before"})
 		return
@@ -112,10 +147,6 @@ func CreateADs(c *gin.Context) {
 	}
 
 	go CreateDbField(&ad)
-
-	// if err != nil {
-	// 	log.Error("insert failed: ", err)
-	// }
 
 	// send the data to the client
 	c.JSON(200, gin.H{
@@ -146,6 +177,44 @@ Android iOS，
 "http://<hos t>/api/v1/ad?offset =10&limit=3&age=24&gender=F&country=TW&platform=ios"
 */
 
+func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Context) {
+	rows, err := db.Query(dbQuery, query.Age, query.Limit, query.Offset)
+
+	if err != nil {
+		log.Error("don't find the suitable advertise for you: ", err)
+	}
+	defer rows.Close()
+
+	// create a slice to store the satisfy ads with the query.Response type
+
+	satisfyADs := []param.Response{}
+
+	index := 1
+	// select only limit number of rows, the number is equal to limit and the ads start from off
+	// according to how many selected rows, create how many go routines to process the data
+	for rows.Next() {
+		if index >= query.Offset {
+			ad := param.Response{}
+			err := rows.Scan(&ad.Title, &ad.EndAt)
+			if err != nil {
+				log.Error(err)
+			}
+			satisfyADs = append(satisfyADs, ad)
+			// if the length of the satisfyADs is equal to the limit, break the loop
+			if len(satisfyADs) == query.Limit {
+				break
+			}
+		}
+		index++
+	}
+
+	// only return title and endAt to the client
+	// send the data to the client
+	c.JSON(200, gin.H{
+		"items": satisfyADs,
+	})
+}
+
 func GetADsWithConditions(c *gin.Context) {
 	// get the ads with some conditions
 	// get the db variable from the middleware
@@ -173,49 +242,10 @@ func GetADsWithConditions(c *gin.Context) {
 	// if the country and platform are in the conditions of the row, then the row is selected
 	// As same as above statement, the age should be between the ageStart and ageEnd
 	// country,platform,gender,and age are the variables of the conditions,so pass them to the query
+	// and sort the result by the endAt
 
 	dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + query.Country + `"], "platform": ["` + query.Platform + `"], "gender": "` + query.Gender + `"}'
-	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int`
+	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
 
-	rows, err := db.Query(dbQuery, query.Age)
-
-	if err != nil {
-		log.Error("don't find the suitable advertise for you: ", err)
-	}
-	defer rows.Close()
-
-	// create a slice to store the satisfy ads with the query.Response type
-
-	satisfyADs := []param.Response{}
-
-	index := 1
-	// select only limit number of rows, the number is equal to limit and the ads start from off
-	for rows.Next() {
-		if index >= offset {
-			ad := param.Response{}
-			err := rows.Scan(&ad.Title, &ad.EndAt)
-			if err != nil {
-				log.Error(err)
-			}
-			satisfyADs = append(satisfyADs, ad)
-			// if the length of the satisfyADs is equal to the limit, break the loop
-			if len(satisfyADs) == limit {
-				break
-			}
-		}
-		index++
-	}
-
-	// now need to sort the satisfyADs by the endAt
-	// sort the satisfyADs by the endAt
-
-	sort.Slice(satisfyADs, func(i, j int) bool {
-		return satisfyADs[i].EndAt.Before(satisfyADs[j].EndAt)
-	})
-
-	// only return title and endAt to the client
-	// send the data to the client
-	c.JSON(200, gin.H{
-		"items": satisfyADs,
-	})
+	SearchForYourAds(dbQuery, query, db, c)
 }
