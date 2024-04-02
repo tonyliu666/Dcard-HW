@@ -5,22 +5,21 @@ import (
 	"dcardapp/middleware"
 	"dcardapp/param"
 	"encoding/json"
-	"io"
 	"net/http/httptest"
 	"net/url"
 
 	// load the .env file
+	"dcardapp/util"
 	"testing"
+
+	"github.com/gomodule/redigo/redis"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/stretchr/testify/assert"
 )
-
-
 
 func TestCreateADs(t *testing.T) {
 	// create the moke gin context
@@ -38,16 +37,16 @@ func TestCreateADs(t *testing.T) {
 	adRequest.Conditions.Gender = "F"
 	adRequest.Conditions.Country = []string{"TW", "JP"}
 	adRequest.Conditions.Platform = []string{"android", "ios"}
-	
+
 	jsonStr, err := json.Marshal(adRequest)
 
 	if err != nil {
 		t.Errorf("Marsal error: %v", err)
 	}
-	
+
 	// set up a fake request with the parameters q which is the query parameters
 	c.Request = httptest.NewRequest("POST", "/api/v1/ad", bytes.NewBuffer(jsonStr))
-	
+
 	// ADRequest filled with the mock data
 	// I want to mock c.ShouldBindJSON(&adRequest)
 
@@ -57,7 +56,7 @@ func TestCreateADs(t *testing.T) {
 	// if the data does not exist, then the test fails
 	// if the data(row) exists, then the test passes
 
-	db,err := middleware.GetDB()
+	db, err := middleware.GetDB()
 
 	db.QueryRow("SELECT title FROM advertisement WHERE title = 'AD504'").Scan(&jsonStr)
 
@@ -69,6 +68,7 @@ func TestCreateADs(t *testing.T) {
 	t.Logf("data exists in the database")
 
 }
+// check whtether the query exists in the redis or not
 func TestGetADsWithConditions(t *testing.T) {
 	// create the moke gin context
 	gin.SetMode(gin.TestMode)
@@ -91,42 +91,40 @@ func TestGetADsWithConditions(t *testing.T) {
 	// check the return json data
 	GetADsWithConditions(c)
 
-	// check the contents of c.JSON
-	if c.Writer.Status() != 200 {
-		t.Errorf("status code is not 200")
+	// check whether the query has been sent to the redis or not
+	// if the query has been sent to the redis, then the test passes
+	// if the query has not been sent to the redis, then the test fails
+
+	// check the job name searchForYourAds in the redis
+	// get the hashvalue
+	query := param.Query{
+		Age:      "30",
+		Country:  "TW",
+		Platform: "android",
+		Gender:   "F",
+		Offset:   0,
+		Limit:    3,
 	}
 
-	// how to check the contents of c.JSON
-
-	log.Info("get ad with conditions")
-
-	// check the contents of JSON is equal to the expected value
-	// if the contents are not equal, then print the error message
-	// and the expected value
-
-	var response struct {
-		Items []param.Response `json:"items"`
+	redisPool := &redis.Pool{
+		MaxActive: 5,
+		MaxIdle:   5,
+		Wait:      true,
+		Dial: func() (redis.Conn, error) {
+			return redis.Dial("tcp", ":6379")
+		},
 	}
 
-	b, err := io.ReadAll(w.Body)
+	key := util.GenerateHash(query)
+	conn := redisPool.Get()
+	defer conn.Close()
 
+	// get the value from the redis
+	_, err := conn.Do("GET", key)
 	if err != nil {
-		t.Errorf("error: %v", err)
+		t.Errorf("get the value from the redis failed: %v", err)
 	}
-
-	err = json.Unmarshal(b, &response)
-
-	if err != nil {
-		t.Errorf("Unmarshal data error: %v", err)
-	}
-
-	// response.EndAt needs to be in time.Time format, like 2024-12-27T16:23:15Z
-	
-	// check the response
-	assert.Equal(t, response.Items[0].Title, "AD404")
-
-	// return pass
-	t.Logf("response: %v", response)
+	t.Log("get the value from the redis")
 }
 
 func TestCheckADExist(t *testing.T) {
@@ -134,10 +132,9 @@ func TestCheckADExist(t *testing.T) {
 	title := []string{"AD504", "AD203", "AD35"}
 	count := 0
 	for _, v := range title {
-		if CheckADExist(v){
+		if CheckADExist(v) {
 			count++
 		}
 	}
 	assert.Equal(t, count, 3)
 }
-

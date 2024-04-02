@@ -1,11 +1,11 @@
 package service
 
 import (
-	"database/sql"
 	"dcardapp/buffer"
 	"dcardapp/middleware"
 	"dcardapp/model"
 	"dcardapp/param"
+	"dcardapp/util"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gocraft/work"
+	"github.com/gomodule/redigo/redis"
 	log "github.com/sirupsen/logrus"
+	
 	//"dcardapp/buffer"
 )
 
@@ -35,9 +38,13 @@ type ADRequest struct {
 	} `json:"conditions"`
 }
 
+var Enqueuer *work.Enqueuer
+var CacheConnection redis.Conn
+
 func init() {
 	// Start the background goroutine to reset the counter
 	go ResetCreationCounter()
+	Enqueuer = buffer.SetupEnqueuer()
 }
 
 // restrict this counter value not over 3000
@@ -178,47 +185,7 @@ func CreateDbField(ad *model.User) error {
 	return nil
 }
 
-func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Context) {
-	rows, err := db.Query(dbQuery, query.Age, query.Limit, query.Offset)
 
-	if err != nil {
-		log.Error("don't find the suitable advertise for you: ", err)
-	}
-
-	//log.Info("search for your ads")
-	defer rows.Close()
-
-	// create a slice to store the satisfy ads with the query.Response type
-
-	satisfyADs := []param.Response{}
-
-	index := 1
-	// select only limit number of rows, the number is equal to limit and the ads start from off
-	// according to how many selected rows, create how many go routines to process the data
-	for rows.Next() {
-		if index >= query.Offset {
-			ad := param.Response{}
-			err := rows.Scan(&ad.Title, &ad.EndAt)
-			if err != nil {
-				log.Error("database scan error: ", err)
-			}
-			satisfyADs = append(satisfyADs, ad)
-			// if the length of the satisfyADs is equal to the limit, break the loop
-			if len(satisfyADs) == query.Limit {
-				break
-			}
-		}
-		index++
-	}
-
-	//rows.Close()
-
-	// only return title and endAt to the client
-	// send the data to the client
-	c.JSON(200, gin.H{
-		"items": satisfyADs,
-	})
-}
 
 // get the advertisemnet with some conditions
 /*
@@ -230,10 +197,10 @@ func GetADsWithConditions(c *gin.Context) {
 	// get the ads with some conditions
 	// get the db variable from the middleware
 	params := c.Request.URL.Query()
-	db, err := middleware.GetDB()
-	if err != nil {
-		log.Error("get the database failed: ", err)
-	}
+	// db, err := middleware.GetDB()
+	// if err != nil {
+	// 	log.Error("get the database failed: ", err)
+	// }
 
 	// get the all the parameters from the client
 	// wrap the parameters in the query
@@ -253,11 +220,7 @@ func GetADsWithConditions(c *gin.Context) {
 		Gender:   params.Get("gender"),
 	}
 
-	producer, err := buffer.SetupProducer()
-	if err != nil {
-		log.Fatalf("failed to initialize kafka producer: %v", err)
-	}
-	defer producer.Close()
+	Enqueuer.EnqueueUnique("searchForYourAds", work.Q{"query": query})
 
 	// check whether country,platform and gender params are in each row of the database
 	// if the country and platform are in the conditions of the row, then the row is selected
@@ -265,8 +228,26 @@ func GetADsWithConditions(c *gin.Context) {
 	// country,platform,gender,and age are the variables of the conditions,so pass them to the query
 	// and sort the result by the endAt
 
-	dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + query.Country + `"], "platform": ["` + query.Platform + `"], "gender": "` + query.Gender + `"}'
-	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
+	// check whether the request is in the redis cache or not
+	// if the request is in the cache, then return the result from the cache
 
-	SearchForYourAds(dbQuery, query, db, c)
+	CacheConnection = buffer.SetupCacheConnection()
+	defer CacheConnection.Close()
+
+	rsp, err := CacheConnection.Do("GET",util.GenerateHash(query))
+
+	
+	if err != nil {
+		log.Error("get the value from the redis failed: ", err)
+	}
+
+	if rsp != nil {
+		c.JSON(200, rsp)
+		return
+	}
+
+	c.JSON(202, gin.H{
+		"message": "The query is still processing",
+	})
+
 }
