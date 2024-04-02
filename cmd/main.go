@@ -36,9 +36,31 @@ type Query struct {
 	Limit    int
 }
 */
+
 type Context struct {
-	Query param.Query
+	Age      string
+	Country  string
+	Platform string
+	Gender   string
+	Offset   int
+	Limit    int
 }
+
+func (c *Context) assignValue(query interface{}) {
+	c.Age = query.(param.Query).Age
+	c.Country = query.(param.Query).Country
+	c.Platform = query.(param.Query).Platform
+	c.Gender = query.(param.Query).Gender 
+	c.Offset = query.(param.Query).Offset
+	c.Limit = query.(param.Query).Limit
+}
+
+func (c *Context) transformToQuery() param.Query {
+	return param.Query{Age: c.Age, Country: c.Country, Platform: c.Platform, 
+		Gender: c.Gender, Offset: c.Offset, Limit: c.Limit}
+}
+
+
 
 func (c *Context) Log(job *work.Job, next work.NextMiddlewareFunc) error {
 	fmt.Println("Starting job: ", job.Name)
@@ -48,7 +70,7 @@ func (c *Context) Log(job *work.Job, next work.NextMiddlewareFunc) error {
 func (c *Context) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
 	// If there's a user_id param, set it in the context for future middleware and handlers to use.
 	if query, ok := job.Args["query"]; ok {
-		c.Query = query.(param.Query)
+		c.assignValue(query)
 		if err := job.ArgError(); err != nil {
 			return err
 		}
@@ -99,7 +121,7 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB) []param.Res
 func (c *Context) CheckTheAdsWithQuery(job *work.Job) error {
 	// Extract arguments:
 
-	newquery := c.Query
+	newquery := c.transformToQuery()
 	// Extract the query from the job
 	db, err := middleware.GetDB()
 	if err != nil {

@@ -35,7 +35,8 @@ func TestCheckTheAdsWithQuery(t *testing.T) {
 	// fake the context
 	query := param.Query{Age: "35", Country: "TW", Platform: "ios",
 		Gender: "F", Offset: 2, Limit: 3}
-	c := &Context{Query: query}
+	c := &Context{Age: "35", Country: "TW", Platform: "ios",
+	Gender: "F", Offset: 2, Limit: 3}
 
 	job := &work.Job{}
 	err := c.CheckTheAdsWithQuery(job)
