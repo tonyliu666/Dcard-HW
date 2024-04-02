@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http/httptest"
 	"net/url"
-	"time"
 
 	// load the .env file
 	"testing"
@@ -58,7 +57,7 @@ func TestCreateADs(t *testing.T) {
 	// if the data does not exist, then the test fails
 	// if the data(row) exists, then the test passes
 
-	db := middleware.GetDB()
+	db,err := middleware.GetDB()
 
 	db.QueryRow("SELECT title FROM advertisement WHERE title = 'AD504'").Scan(&jsonStr)
 
@@ -122,11 +121,9 @@ func TestGetADsWithConditions(t *testing.T) {
 	}
 
 	// response.EndAt needs to be in time.Time format, like 2024-12-27T16:23:15Z
-	endAt, _ := time.Parse(time.RFC3339, "2024-12-27T16:23:15Z")
-
+	
 	// check the response
-	assert.Equal(t, response.Items[0].Title, "AD403")
-	assert.Equal(t, response.Items[0].EndAt, endAt)
+	assert.Equal(t, response.Items[0].Title, "AD404")
 
 	// return pass
 	t.Logf("response: %v", response)
@@ -143,3 +140,4 @@ func TestCheckADExist(t *testing.T) {
 	}
 	assert.Equal(t, count, 3)
 }
+

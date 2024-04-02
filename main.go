@@ -11,6 +11,8 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"dcardapp/middleware"
+
+	"github.com/aviddiviner/gin-limit"
 )
 
 // read from .emv file
@@ -47,7 +49,8 @@ func AddDBToMiddleware(db *sql.DB) {
 }
 
 func NewRouter() *gin.Engine {
-	r := gin.New()
+	// r := gin.New()
+	r := gin.Default()
 	r.SetTrustedProxies([]string{"127.0.0.1"})
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
@@ -64,6 +67,6 @@ func main() {
 	// create an entry for the advertisement in the database
 	// create router
 	router := NewRouter()
+	router.Use(limit.MaxAllowed(3))
 	router.Run(":8080")
-
 }

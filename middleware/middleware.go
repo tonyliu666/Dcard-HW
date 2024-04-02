@@ -5,7 +5,7 @@ import (
 	"dcardapp/config"
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
+	//log "github.com/sirupsen/logrus"
 )
 
 var connection *sql.DB
@@ -15,7 +15,7 @@ func Init(db *sql.DB) {
 	connection = db
 }
 
-func GetDB() *sql.DB {
+func GetDB() (*sql.DB,error) {
 	// get the database connection from the context
 	if connection == nil {
 		// create a new connection
@@ -28,9 +28,9 @@ func GetDB() *sql.DB {
 		connection, err = sql.Open("postgres", psqlInfo)
 
 		if err != nil {
-			log.Error(err)
+			return nil, fmt.Errorf("cannot connect to the database: %v", err)
 		}
 
 	}
-	return connection
+	return connection,nil
 }

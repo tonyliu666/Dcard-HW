@@ -2,6 +2,7 @@ package service
 
 import (
 	"database/sql"
+	"dcardapp/buffer"
 	"dcardapp/middleware"
 	"dcardapp/model"
 	"dcardapp/param"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	//"dcardapp/buffer"
 )
 
 var (
@@ -33,7 +35,6 @@ type ADRequest struct {
 	} `json:"conditions"`
 }
 
-
 func init() {
 	// Start the background goroutine to reset the counter
 	go ResetCreationCounter()
@@ -53,12 +54,14 @@ func ResetCreationCounter() {
 	}
 }
 
-
 func CheckADExist(title string) bool {
-	db := middleware.GetDB()
+	db, err := middleware.GetDB()
+	if err != nil {
+		log.Error("get the database failed: ", err)
+	}
 	// check the advertisement is created before
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM advertisement WHERE title = $1", title).Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM advertisement WHERE title = $1", title).Scan(&count)
 	if err != nil {
 		log.Error(err)
 	}
@@ -106,6 +109,8 @@ func RequestTransformToUser(adRequest ADRequest) (model.User, error) {
 	gender := fmt.Sprintf(`"%s"`, adRequest.Conditions.Gender)
 	conditionsStr := fmt.Sprintf(`{"ageStart": %d, "ageEnd": %d,"gender": %s, "country": %s, "platform": %s}`, adRequest.Conditions.AgeStart, adRequest.Conditions.AgeEnd, gender, country, platform)
 
+	log.Info(adRequest.Title, startAt, endAt, conditionsStr)
+
 	return model.User{
 		Title:      adRequest.Title,
 		StartAt:    startAt,
@@ -116,15 +121,14 @@ func RequestTransformToUser(adRequest ADRequest) (model.User, error) {
 
 func CreateADs(c *gin.Context) {
 	counterMutex.Lock()
-    defer counterMutex.Unlock()
+	defer counterMutex.Unlock()
 
-	// counter + 1
+	//counter + 1
 	if CreationCounter >= 3000 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "The advertisement is created over the quota today, please try tomorrow"})
 		return
 	}
 	CreationCounter++
-
 
 	var adRequest ADRequest
 
@@ -156,26 +160,23 @@ func CreateADs(c *gin.Context) {
 
 func CreateDbField(ad *model.User) error {
 	// get the db variable from the middleware
-	db := middleware.GetDB()
+	db, err := middleware.GetDB()
+	if err != nil {
+		log.Error("get the database failed: ", err)
+	}
 	// create the fields in the database
 
 	insertStmt := `INSERT INTO advertisement (title, start_at, end_at, conditions) VALUES ($1, $2, $3, $4)`
 
 	// check the advertisement is created before
-	_, err := db.Exec(insertStmt, ad.Title, ad.StartAt, ad.EndAt, ad.Conditions)
+	_, err = db.Exec(insertStmt, ad.Title, ad.StartAt, ad.EndAt, ad.Conditions)
 	if err != nil {
+		log.Error("create the advertisement failed: ", err)
 		return err
 	}
 
 	return nil
 }
-
-// get the advertisemnet with some conditions
-/*
-eg: curl -X GET -H "Content-Type: application/json" \
-Android iOS，
-"http://<hos t>/api/v1/ad?offset =10&limit=3&age=24&gender=F&country=TW&platform=ios"
-*/
 
 func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Context) {
 	rows, err := db.Query(dbQuery, query.Age, query.Limit, query.Offset)
@@ -183,6 +184,8 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Cont
 	if err != nil {
 		log.Error("don't find the suitable advertise for you: ", err)
 	}
+
+	//log.Info("search for your ads")
 	defer rows.Close()
 
 	// create a slice to store the satisfy ads with the query.Response type
@@ -197,7 +200,7 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Cont
 			ad := param.Response{}
 			err := rows.Scan(&ad.Title, &ad.EndAt)
 			if err != nil {
-				log.Error(err)
+				log.Error("database scan error: ", err)
 			}
 			satisfyADs = append(satisfyADs, ad)
 			// if the length of the satisfyADs is equal to the limit, break the loop
@@ -208,6 +211,8 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Cont
 		index++
 	}
 
+	//rows.Close()
+
 	// only return title and endAt to the client
 	// send the data to the client
 	c.JSON(200, gin.H{
@@ -215,11 +220,20 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Cont
 	})
 }
 
+// get the advertisemnet with some conditions
+/*
+eg: curl -X GET -H "Content-Type: application/json" \
+Android iOS，
+"http://<hos t>/api/v1/ad?offset =10&limit=3&age=24&gender=F&country=TW&platform=ios"
+*/
 func GetADsWithConditions(c *gin.Context) {
 	// get the ads with some conditions
 	// get the db variable from the middleware
 	params := c.Request.URL.Query()
-	db := middleware.GetDB()
+	db, err := middleware.GetDB()
+	if err != nil {
+		log.Error("get the database failed: ", err)
+	}
 
 	// get the all the parameters from the client
 	// wrap the parameters in the query
@@ -229,6 +243,7 @@ func GetADsWithConditions(c *gin.Context) {
 		limit, _ = strconv.Atoi(params.Get("limit"))
 	}
 
+	// add asynchroneous way, kafka server send the query to the client and let client process them
 	query := param.Query{
 		Offset:   offset,
 		Limit:    limit,
@@ -237,6 +252,12 @@ func GetADsWithConditions(c *gin.Context) {
 		Platform: params.Get("platform"),
 		Gender:   params.Get("gender"),
 	}
+
+	producer, err := buffer.SetupProducer()
+	if err != nil {
+		log.Fatalf("failed to initialize kafka producer: %v", err)
+	}
+	defer producer.Close()
 
 	// check whether country,platform and gender params are in each row of the database
 	// if the country and platform are in the conditions of the row, then the row is selected
