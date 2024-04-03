@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"dcrad-background/config"
 	"fmt"
+	_ "github.com/lib/pq"
 
 	//log "github.com/sirupsen/logrus"
 )

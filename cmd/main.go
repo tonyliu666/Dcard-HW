@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	"dcrad-background/middleware"
 	"dcrad-background/param"
-	"dcrad-background/util"
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/gocraft/work"
 	"github.com/gomodule/redigo/redis"
@@ -25,19 +25,9 @@ var redisPool = &redis.Pool{
 }
 
 // query should be like this:
-/*
+
 type Query struct {
-// contains filtered or unexported fields
-	Age      string
-	Country  string
-	Platform string
-	Gender   string
-	Offset   int
-	Limit    int
-}
-*/
-
-type Context struct {
+	// contains filtered or unexported fields
 	Age      string
 	Country  string
 	Platform string
@@ -46,40 +36,50 @@ type Context struct {
 	Limit    int
 }
 
-func (c *Context) assignValue(query interface{}) {
-	c.Age = query.(param.Query).Age
-	c.Country = query.(param.Query).Country
-	c.Platform = query.(param.Query).Platform
-	c.Gender = query.(param.Query).Gender 
-	c.Offset = query.(param.Query).Offset
-	c.Limit = query.(param.Query).Limit
-}
 
-func (c *Context) transformToQuery() param.Query {
-	return param.Query{Age: c.Age, Country: c.Country, Platform: c.Platform, 
-		Gender: c.Gender, Offset: c.Offset, Limit: c.Limit}
-}
-
-
-
-func (c *Context) Log(job *work.Job, next work.NextMiddlewareFunc) error {
+func (c *Query) Log(job *work.Job, next work.NextMiddlewareFunc) error {
 	fmt.Println("Starting job: ", job.Name)
 	return next()
 }
 
-func (c *Context) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
+// func (c *Query) assignQuery(query map[string]interface{}) {
+	
+// }
+
+func (c *Query) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
 	// If there's a user_id param, set it in the context for future middleware and handlers to use.
 	if query, ok := job.Args["query"]; ok {
-		c.assignValue(query)
+		// fmt.Println("find the query: ", query)
+		// fmt.Println("get the type of query: ", fmt.Sprintf("%T", query))
+		// assign all the atributes in query to the struct
+
+		for key, value := range query.(map[string]interface{}) {
+			switch key {
+			case "Age":
+				c.Age = value.(string)
+			case "Country":
+				c.Country = value.(string)
+			case "Gender":
+				c.Gender = value.(string)
+			case "Limit":
+				c.Limit = int(value.(float64))
+			case "Offset":
+				c.Offset = int(value.(float64))
+			case "Platform":
+				c.Platform = value.(string)
+			}
+		}
+		
 		if err := job.ArgError(); err != nil {
+			fmt.Println("arg error: ", err)
 			return err
 		}
 	}
 	return next()
 }
 
-func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB) []param.Response {
-	rows, err := db.Query(dbQuery, query.Age, query.Limit, query.Offset)
+func (c *Query)SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
+	rows, err := db.Query(dbQuery, c.Age, c.Limit, c.Offset)
 
 	if err != nil {
 		log.Error("don't find the suitable advertise for you: ", err)
@@ -96,7 +96,7 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB) []param.Res
 	// select only limit number of rows, the number is equal to limit and the ads start from off
 	// according to how many selected rows, create how many go routines to process the data
 	for rows.Next() {
-		if index >= query.Offset {
+		if index >= c.Offset {
 			ad := param.Response{}
 			err := rows.Scan(&ad.Title, &ad.EndAt)
 			if err != nil {
@@ -104,7 +104,7 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB) []param.Res
 			}
 			satisfyADs = append(satisfyADs, ad)
 			// if the length of the satisfyADs is equal to the limit, break the loop
-			if len(satisfyADs) == query.Limit {
+			if len(satisfyADs) == c.Limit {
 				break
 			}
 		}
@@ -118,27 +118,26 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB) []param.Res
 	return satisfyADs
 }
 
-func (c *Context) CheckTheAdsWithQuery(job *work.Job) error {
+func (c *Query) CheckTheAdsWithQuery(job *work.Job) error {
 	// Extract arguments:
 
-	newquery := c.transformToQuery()
 	// Extract the query from the job
 	db, err := middleware.GetDB()
 	if err != nil {
 		fmt.Println("get the database failed: ", err)
 	}
 
-	dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + newquery.Country + `"], "platform": ["` + newquery.Platform + `"], "gender": "` + newquery.Gender + `"}'
+	dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + c.Country + `"], "platform": ["` + c.Platform + `"], "gender": "` + c.Gender + `"}'
 	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
 
-	Ads := SearchForYourAds(dbQuery, newquery, db)
+	Ads := c.SearchForYourAds(dbQuery,db)
 	// set this result as a value in the redis
 
 	// set these Ads in the redis
 	conn := redisPool.Get()
 	defer conn.Close()
 
-	key := util.GenerateHash(newquery)
+	key := c.GenerateHash()
 	_, err = conn.Do("SET", key, Ads)
 	if err != nil {
 		return err
@@ -146,27 +145,29 @@ func (c *Context) CheckTheAdsWithQuery(job *work.Job) error {
 	return nil
 }
 
+func (query Query) GenerateHash () string{
+	// Concatenate struct fields into a string
+	hash := fmt.Sprintf("%s:%s:%s:%s:%d:%d",
+		query.Age , query.Country, query.Platform, query.Gender, query.Offset, query.Limit)
+	return hash
+}
+
 func main() {
-	// Make a new pool. Arguments:
-	// Context{} is a struct that will be the context for the request.
-	// 10 is the max concurrency
-	// "application_namespace" is the Redis namespace
-	// redisPool is a Redis pool
-	pool := work.NewWorkerPool(Context{}, 10, "query_namespace", redisPool)
+	pool := work.NewWorkerPool(Query{}, 10, "query_namespace", redisPool)
 
 	// Add middleware that will be executed for each job
-	pool.Middleware((*Context).Log)
-	pool.Middleware((*Context).FindQuery)
+	pool.Middleware((*Query).Log)
+	pool.Middleware((*Query).FindQuery)
 
 	// Map the name of jobs to handler functions
-	pool.Job("searchForYourAds", (*Context).CheckTheAdsWithQuery)
+	pool.Job("searchForYourAds", (*Query).CheckTheAdsWithQuery)
 
 	// Start processing jobs
 	pool.Start()
 
 	// Wait for a signal to quit:
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, os.Kill)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 	<-signalChan
 
 	// Stop the pool
