@@ -225,12 +225,6 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Cont
 	})
 }
 
-// get the advertisemnet with some conditions
-/*
-eg: curl -X GET -H "Content-Type: application/json" \
-Android iOS，
-"http://<hos t>/api/v1/ad?offset =10&limit=3&age=24&gender=F&country=TW&platform=ios"
-*/
 
 /*
 check whether country,platform and gender params are in each row of the database

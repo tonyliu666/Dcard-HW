@@ -54,9 +54,6 @@ func NewRouter() *gin.Engine {
 	r.SetTrustedProxies([]string{"127.0.0.1"})
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
-	r.GET("/ping", func(c *gin.Context) {
-		c.String(200, "pong")
-	})
 	api := r.Group("/api/v1")
 
 	routing.AddUserRouter(api)

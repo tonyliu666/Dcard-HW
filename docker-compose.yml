@@ -14,15 +14,30 @@ services:
       - "5433:5432"
     volumes:
       - ./database/:/docker-entrypoint-initdb.d/
+  # connect with database
   backend:
     image: dcard:latest
     restart: always
     depends_on:
       - db
+      - redis
+    ports: 
+      - "8081:8080"
     environment:
-      DB_HOST: postgres
+      DB_HOST: db
+    
   redis:
     image: redis:alpine
     restart: always
     ports:
       - "6379:6379"
+
+  background:
+    image: dcard-background:latest 
+    restart: always
+    depends_on:
+      - db
+      - redis
+    environment:
+      DB_HOST: db
+    
