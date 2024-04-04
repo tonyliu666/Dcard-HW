@@ -27,3 +27,16 @@ Running 20s test @ http://localhost:8080/api/v1/ad?offset=2&limit=3&age=35&gende
   Non-2xx or 3xx responses: 49
 Requests/sec:    414.53
 Transfer/sec:     93.99KB'
+
+3. use the background worker(redis), the performance can be like this: 
+
+'wrk -t10 -c1000 -d20s http://localhost:8080/api/v1/ad\?offset\=1\&limit\=3\&age\=35\&gender\=F\&country\=TW\&platform\=ios
+Running 20s test @ http://localhost:8080/api/v1/ad?offset=1&limit=3&age=35&gender=F&country=TW&platform=ios
+  10 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   202.83ms  107.89ms 550.44ms   66.42%
+    Req/Sec   119.42     79.57   424.00     76.70%
+  23639 requests in 20.11s, 4.90MB read
+  Socket errors: connect 759, read 102, write 0, timeout 0
+Requests/sec:   1175.75
+Transfer/sec:    249.71KB'

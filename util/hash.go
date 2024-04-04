@@ -11,3 +11,4 @@ func GenerateHash(query param.Query) string {
 		query.Age, query.Country, query.Platform, query.Gender, query.Offset, query.Limit)
 	return hash
 }
+

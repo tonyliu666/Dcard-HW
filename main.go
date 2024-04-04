@@ -12,7 +12,7 @@ import (
 
 	"dcardapp/middleware"
 
-	"github.com/aviddiviner/gin-limit"
+	//"github.com/aviddiviner/gin-limit"
 )
 
 // read from .emv file
@@ -67,6 +67,6 @@ func main() {
 	// create an entry for the advertisement in the database
 	// create router
 	router := NewRouter()
-	router.Use(limit.MaxAllowed(3))
+	//router.Use(limit.MaxAllowed(3))
 	router.Run(":8080")
 }

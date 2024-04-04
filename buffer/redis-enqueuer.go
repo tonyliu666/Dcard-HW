@@ -7,7 +7,7 @@ import (
 
 func SetupEnqueuer() (*work.Enqueuer) {
 	redisPool := &redis.Pool{
-		MaxActive: 5,
+		MaxActive: 10000,
 		MaxIdle:   5,
 		Wait:      true,
 		Dial: func() (redis.Conn, error) {
@@ -20,7 +20,7 @@ func SetupEnqueuer() (*work.Enqueuer) {
 
 func SetupCacheConnection() (redis.Conn) {
 	redisPool := &redis.Pool{
-		MaxActive: 5,
+		MaxActive: 10000,
 		MaxIdle:   5,
 		Wait:      true,
 		Dial: func() (redis.Conn, error) {
