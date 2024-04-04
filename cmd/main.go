@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"dcrad-background/middleware"
 	"dcrad-background/param"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -16,11 +17,11 @@ import (
 
 // Make a redis pool
 var redisPool = &redis.Pool{
-	MaxActive: 10,
+	MaxActive: 7000,
 	MaxIdle:   5,
 	Wait:      true,
 	Dial: func() (redis.Conn, error) {
-		return redis.Dial("tcp", ":6379")
+		return redis.Dial("tcp", "redis:6379")
 	},
 }
 
@@ -36,14 +37,13 @@ type Query struct {
 	Limit    int
 }
 
-
 func (c *Query) Log(job *work.Job, next work.NextMiddlewareFunc) error {
 	fmt.Println("Starting job: ", job.Name)
 	return next()
 }
 
 // func (c *Query) assignQuery(query map[string]interface{}) {
-	
+
 // }
 
 func (c *Query) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
@@ -69,7 +69,7 @@ func (c *Query) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
 				c.Platform = value.(string)
 			}
 		}
-		
+
 		if err := job.ArgError(); err != nil {
 			fmt.Println("arg error: ", err)
 			return err
@@ -78,7 +78,7 @@ func (c *Query) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
 	return next()
 }
 
-func (c *Query)SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
+func (c *Query) SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
 	rows, err := db.Query(dbQuery, c.Age, c.Limit, c.Offset)
 
 	if err != nil {
@@ -130,7 +130,7 @@ func (c *Query) CheckTheAdsWithQuery(job *work.Job) error {
 	dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + c.Country + `"], "platform": ["` + c.Platform + `"], "gender": "` + c.Gender + `"}'
 	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
 
-	Ads := c.SearchForYourAds(dbQuery,db)
+	Ads := c.SearchForYourAds(dbQuery, db)
 	// set this result as a value in the redis
 
 	// set these Ads in the redis
@@ -138,22 +138,30 @@ func (c *Query) CheckTheAdsWithQuery(job *work.Job) error {
 	defer conn.Close()
 
 	key := c.GenerateHash()
-	_, err = conn.Do("SET", key, Ads)
+
+	// convert Ads to json string
+	AdsJson, err := json.Marshal(Ads)
+	if err != nil {
+		return err	
+	}
+	// set the ttl for the key to 30mins if timeout, the key will be deleted
+	_, err = conn.Do("SET", key, AdsJson, "EX", 30*60)
+	
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (query Query) GenerateHash () string{
+func (query Query) GenerateHash() string {
 	// Concatenate struct fields into a string
 	hash := fmt.Sprintf("%s:%s:%s:%s:%d:%d",
-		query.Age , query.Country, query.Platform, query.Gender, query.Offset, query.Limit)
+		query.Age, query.Country, query.Platform, query.Gender, query.Offset, query.Limit)
 	return hash
 }
 
 func main() {
-	pool := work.NewWorkerPool(Query{}, 10, "query_namespace", redisPool)
+	pool := work.NewWorkerPool(Query{}, 300, "query_namespace", redisPool)
 
 	// Add middleware that will be executed for each job
 	pool.Middleware((*Query).Log)
