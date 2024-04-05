@@ -3,8 +3,9 @@
 * performance comparison: 
 
 1. first, only use default router
-'wrk -t12 -c400 -d20s http://localhost:8080/api/v1/ad\?offset\=2\&limit\=3\&age\=35\&gender\=F\&country\=TW\&platform\=ios
-Running 20s test @ http://localhost:8080/api/v1/ad?offset=2&limit=3&age=35&gender=F&country=TW&platform=ios
+* wrk -t12 -c400 -d20s http://localhost:8080/api/v1/ad\?offset\=2\&limit\=3\&age\=35\&gender\=F\&country\=TW\&platform\=ios
+
+> Running 20s test @ http://localhost:8080/api/v1/ad?offset=2&limit=3&age=35&gender=F&country=TW&platform=ios
   12 threads and 400 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency   165.95ms  478.40ms   2.00s    90.78%
