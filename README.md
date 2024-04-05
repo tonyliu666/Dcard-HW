@@ -5,7 +5,7 @@
 3. And finall run **docker compose up -d** on the redis branch
 
 
-* Test this api: 
+### Test this api: 
 
 - usage: 
 For the get request endpoint /api/v1/ad, you can use the following curl command: 
@@ -29,7 +29,7 @@ For post request, you can create a post request with the body like this:
 "country: ["TW", "JP"], "platform": ["android", "ios"]
 } }
 }'
-* it's the same as the example listed on the assignment
+* It's the same as the example listed on the assignment
 
 ### performance
 
