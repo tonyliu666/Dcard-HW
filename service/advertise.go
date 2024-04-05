@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"database/sql"
 	"dcardapp/buffer"
 	"dcardapp/middleware"
@@ -190,8 +191,13 @@ func CreateDbField(ad *model.User) error {
 }
 
 func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Context) {
-	rows, err := db.Query(dbQuery, query.Age, query.Limit, query.Offset)
-
+	var rows *sql.Rows
+	var err error
+	if query.Age == "" {
+		rows, err = db.Query(dbQuery, query.Limit, query.Offset)
+	} else {
+		rows, err = db.Query(dbQuery, query.Age, query.Limit, query.Offset)
+	}
 	if err != nil {
 		log.Error("don't find the suitable advertise for you: ", err)
 	}
@@ -224,6 +230,74 @@ func SearchForYourAds(dbQuery string, query param.Query, db *sql.DB, c *gin.Cont
 		"items": satisfyADs,
 	})
 }
+
+// change the dbQuery depends on the query, sometimes it will miss some attributes like age,genger,country,platform
+// so need to check the query and change the dbQuery
+func createDBquery(query param.Query) string {
+	var conditions bytes.Buffer
+
+	// Default query
+	dbQuery := "SELECT title, end_at FROM advertisement"
+	onlyAge := true
+	noParam := true
+
+	// Append conditions if available
+	
+	if query.Country != "" {
+		appendCondition(&conditions, "country", query.Country)
+		onlyAge = false
+		noParam = false
+	}
+	if query.Platform != "" {
+		appendCondition(&conditions, "platform", query.Platform)
+		onlyAge = false
+		noParam = false
+	}
+	if query.Gender != "" {
+		appendCondition(&conditions, "gender", query.Gender)
+		onlyAge = false
+		noParam = false
+	}
+
+	// conditions.WriteString("}'")
+	
+
+	//If there are conditions, add them to the query
+	if conditions.Len() > 0 {
+		dbQuery += " WHERE conditions @> '{" + conditions.String() + "}'"
+	}
+	if query.Age != "" {
+		noParam = false
+		if onlyAge {
+			dbQuery += " WHERE $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int"
+		} else{
+			dbQuery += " AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int"
+		}
+	}
+
+	if noParam {
+		dbQuery += " ORDER BY end_at ASC LIMIT $1 OFFSET $2"
+	}else{
+		dbQuery += " ORDER BY end_at ASC LIMIT $2 OFFSET $3"
+	}
+
+	return dbQuery
+}
+
+func appendCondition(conditions *bytes.Buffer, key, value string) {
+	// Append comma if necessary
+	if conditions.Len() > 0 {
+		conditions.WriteString(", ")
+	}
+
+	// Append condition
+	if key == "gender"{
+		conditions.WriteString(fmt.Sprintf(`"%s": "%s"`, key, value))
+	}else{
+		conditions.WriteString(fmt.Sprintf(`"%s": ["%s"]`, key, value))
+	}
+}
+
 
 
 /*
@@ -293,8 +367,11 @@ func GetADsWithConditions(c *gin.Context) {
 		})
 		return
 	} else {
-		dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + query.Country + `"], "platform": ["` + query.Platform + `"], "gender": "` + query.Gender + `"}'
-		AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
+
+		dbQuery := createDBquery(query)
+		// dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + query.Country + `"], "platform": ["` + query.Platform + `"], "gender": "` + query.Gender + `"}'
+		// AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
+		log.Info(dbQuery)
 		db, err := middleware.GetDB()
 		if err != nil {
 			log.Error("get the database failed: ", err)
