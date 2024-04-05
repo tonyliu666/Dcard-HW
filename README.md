@@ -16,8 +16,9 @@ Transfer/sec:     78.73KB'
 
 2. second, use the middleware, router.Use(limit.MaxAllowed(10)) in main.go to constrain the number of concurrent requests handled at the same time: (In master branch, by default without any setting)
 
-'wrk -t12 -c400 -d20s http://localhost:8080/api/v1/ad\?offset\=2\&limit\=3\&age\=35\&gender\=F\&country\=TW\&platform\=ios
-Running 20s test @ http://localhost:8080/api/v1/ad?offset=2&limit=3&age=35&gender=F&country=TW&platform=ios
+* wrk -t12 -c400 -d20s http://localhost:8080/api/v1/ad\?offset\=2\&limit\=3\&age\=35\&gender\=F\&country\=TW\&platform\=ios
+
+> Running 20s test @ http://localhost:8080/api/v1/ad?offset=2&limit=3&age=35&gender=F&country=TW&platform=ios
   12 threads and 400 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency   353.85ms  678.40ms   2.00s    80.63%
