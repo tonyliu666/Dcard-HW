@@ -1,8 +1,8 @@
 ## this is the HW for dcard
 
-1. first, run docker build -t dcard:latest . on the redis branch
-2. second, run docker build -t dcard-background:latest  . on the worker branch 
-3. And finall run docker compose up -d on the redis branch
+1. first, run **docker build -t dcard:latest .** on the redis branch
+2. second, run **docker build -t dcard-background:latest  .** on the worker branch 
+3. And finall run **docker compose up -d** on the redis branch
 
 
 * Test this api: 
@@ -30,5 +30,5 @@ For post request, you can create a post request with the body like this:
 
 ### performance
 
-> I use the "wrk" utility to test the performance for api endpoints, and you can check api performance by your own tools. I list the outputs of api performance on the redis branch
+* I use the "wrk" utility to test the performance for api endpoints, and you can check api performance by your own tools. I list the outputs of api performance on the redis branch
 
