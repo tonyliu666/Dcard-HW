@@ -121,8 +121,6 @@ func RequestTransformToUser(adRequest ADRequest) (model.User, error) {
 	gender := fmt.Sprintf(`"%s"`, adRequest.Conditions.Gender)
 	conditionsStr := fmt.Sprintf(`{"ageStart": %d, "ageEnd": %d,"gender": %s, "country": %s, "platform": %s}`, adRequest.Conditions.AgeStart, adRequest.Conditions.AgeEnd, gender, country, platform)
 
-	log.Info(adRequest.Title, startAt, endAt, conditionsStr)
-
 	return model.User{
 		Title:      adRequest.Title,
 		StartAt:    startAt,
@@ -312,13 +310,13 @@ if the request is in the cache, then return the result from the cache
 func GetADsWithConditions(c *gin.Context) {
 	GetADsMutex.Lock()
 	defer GetADsMutex.Unlock()
-	GetADsCounter++
+	// GetADsCounter++
 
 	// get the ads with some conditions
 	// get the db variable from the middleware
 	params := c.Request.URL.Query()
 
-	// get the all the parameters from the client
+	// get all the parameters from the client
 	// wrap the parameters in the query
 	offset, _ := strconv.Atoi(params.Get("offset"))
 	limit := 5 // default limit is 5
@@ -354,12 +352,12 @@ func GetADsWithConditions(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"items": responses,
 		}) // return the result from the redis cache
-		GetADsCounter--
+		// GetADsCounter--
 		return
 	}
 
-	// if the number of concurrent requests is over 3000, then send the query to the redis server
-	if GetADsCounter >= 3000 {
+	//if the number of concurrent requests is over 3000, then send the query to the redis server
+	if GetADsCounter >= 5000 {
 		Enqueuer.EnqueueUnique("searchForYourAds", work.Q{"query": query})
 		GetADsCounter--
 		c.JSON(202, gin.H{
@@ -367,11 +365,7 @@ func GetADsWithConditions(c *gin.Context) {
 		})
 		return
 	} else {
-
 		dbQuery := createDBquery(query)
-		// dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + query.Country + `"], "platform": ["` + query.Platform + `"], "gender": "` + query.Gender + `"}'
-		// AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
-		log.Info(dbQuery)
 		db, err := middleware.GetDB()
 		if err != nil {
 			log.Error("get the database failed: ", err)
@@ -379,5 +373,5 @@ func GetADsWithConditions(c *gin.Context) {
 		SearchForYourAds(dbQuery, query, db, c)
 		return
 	}
-
+	
 }

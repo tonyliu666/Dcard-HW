@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"net/url"
+	"time"
 
 	// load the .env file
 	"dcardapp/util"
@@ -68,6 +69,7 @@ func TestCreateADs(t *testing.T) {
 	t.Logf("data exists in the database")
 
 }
+
 // check whtether the query exists in the redis or not
 func TestGetADsWithConditions(t *testing.T) {
 	// create the moke gin context
@@ -107,11 +109,11 @@ func TestGetADsWithConditions(t *testing.T) {
 	}
 
 	redisPool := &redis.Pool{
-		MaxActive: 7000,
-		MaxIdle:   5,
-		Wait:      true,
+		MaxActive:   10000,
+		MaxIdle:     3,
+		IdleTimeout: 3 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			return redis.Dial("tcp", ":6379")
+			return redis.Dial("tcp", "redis:6379")
 		},
 	}
 
