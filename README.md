@@ -1,4 +1,4 @@
-## this is the HW for dcard
+## this is the dcard assignment
 
 1. first, run **docker build -t dcard:latest .** on the redis branch
 2. second, run **docker build -t dcard-background:latest  .** on the worker branch 
