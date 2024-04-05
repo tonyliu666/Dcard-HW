@@ -11,6 +11,9 @@
 For the get request endpoint /api/v1/ad, you can use the following curl command: 
 
 > curl http://localhost:8081/api/v1/ad?offset=1&limit=1&age=32&gender=F&country=TW
+
+or 
+
 > curl http://localhost:8081/api/v1/ad?offset=1&limit=3&age=24&gender=F&country=TW&platform=ios
 
 #### only limit parameter is necessary, the others are optional
