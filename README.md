@@ -2,7 +2,7 @@
 
 1. first, run **docker build -t dcard:latest .** on the redis branch
 2. second, run **docker build -t dcard-background:latest  .** on the worker branch 
-3. And finall run **docker compose up -d** on the redis branch
+3. And finally run **docker compose up -d** on the redis branch
 
 
 ### Test this api: 
