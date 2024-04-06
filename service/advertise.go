@@ -26,8 +26,8 @@ import (
 var (
 	CreationCounter int
 	counterMutex    sync.Mutex
-	// GetADsCounter   int
-	// GetADsMutex     sync.Mutex
+	GetADsCounter   int
+	GetADsMutex     sync.Mutex
 )
 
 type ADRequest struct {
@@ -308,9 +308,9 @@ and sort the result by the endAt
 if the request is in the cache, then return the result from the cache
 */
 func GetADsWithConditions(c *gin.Context) {
-	// GetADsMutex.Lock()
-	// defer GetADsMutex.Unlock()
-	// GetADsCounter++
+	GetADsMutex.Lock()
+	defer GetADsMutex.Unlock()
+	GetADsCounter++
 
 	// get the ads with some conditions
 	// get the db variable from the middleware
@@ -352,26 +352,26 @@ func GetADsWithConditions(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"items": responses,
 		}) // return the result from the redis cache
-		// GetADsCounter--
+		GetADsCounter--
 		return
 	}
 
 	//if the number of concurrent requests is over 3000, then send the query to the redis server
-	// if GetADsCounter >= 1000 {
+	if GetADsCounter >= 1000 {
 		Enqueuer.EnqueueUnique("searchForYourAds", work.Q{"query": query})
-		// GetADsCounter--
+		GetADsCounter--
 		c.JSON(202, gin.H{
 			"message": "The query is still processing",
 		})
-		// return
-	// } else {
-	// 	dbQuery := createDBquery(query)
-	// 	db, err := middleware.GetDB()
-	// 	if err != nil {
-	// 		log.Error("get the database failed: ", err)
-	// 	}
-	// 	SearchForYourAds(dbQuery, query, db, c)
-	// 	return
-	// }
+		return
+	} else {
+		dbQuery := createDBquery(query)
+		db, err := middleware.GetDB()
+		if err != nil {
+			log.Error("get the database failed: ", err)
+		}
+		SearchForYourAds(dbQuery, query, db, c)
+		return
+	}
 	
 }
