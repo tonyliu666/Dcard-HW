@@ -6,6 +6,7 @@ import (
 	"dcardapp/routing"
 	"fmt"
 
+	limit "github.com/aviddiviner/gin-limit"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
@@ -64,6 +65,7 @@ func main() {
 	// create an entry for the advertisement in the database
 	// create router
 	router := NewRouter()
+	router.Use(limit.MaxAllowed(3))
 	router.Run(":8080")
 
 }
