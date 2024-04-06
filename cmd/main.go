@@ -19,7 +19,7 @@ import (
 
 // Make a redis pool
 var redisPool = &redis.Pool{
-	MaxActive:   10000,
+	MaxActive:   3000,
 	MaxIdle:     3,
 	IdleTimeout: 3 * time.Second,
 	Dial: func() (redis.Conn, error) {
@@ -216,7 +216,7 @@ func (query Query) GenerateHash() string {
 
 func main() {
 	log.Info("Starting worker")
-	pool := work.NewWorkerPool(Query{}, 5000, "query_namespace", redisPool)
+	pool := work.NewWorkerPool(Query{}, 2000, "query_namespace", redisPool)
 
 	// Add middleware that will be executed for each job
 	pool.Middleware((*Query).Log)
