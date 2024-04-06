@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"dcrad-background/middleware"
 	"dcrad-background/param"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gocraft/work"
 	"github.com/gomodule/redigo/redis"
@@ -17,9 +19,9 @@ import (
 
 // Make a redis pool
 var redisPool = &redis.Pool{
-	MaxActive: 7000,
-	MaxIdle:   5,
-	Wait:      true,
+	MaxActive:   10000,
+	MaxIdle:     3,
+	IdleTimeout: 3 * time.Second,
 	Dial: func() (redis.Conn, error) {
 		return redis.Dial("tcp", "redis:6379")
 	},
@@ -38,20 +40,13 @@ type Query struct {
 }
 
 func (c *Query) Log(job *work.Job, next work.NextMiddlewareFunc) error {
-	fmt.Println("Starting job: ", job.Name)
+	log.Info("Starting job: ", job.Name)
 	return next()
 }
-
-// func (c *Query) assignQuery(query map[string]interface{}) {
-
-// }
 
 func (c *Query) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
 	// If there's a user_id param, set it in the context for future middleware and handlers to use.
 	if query, ok := job.Args["query"]; ok {
-		// fmt.Println("find the query: ", query)
-		// fmt.Println("get the type of query: ", fmt.Sprintf("%T", query))
-		// assign all the atributes in query to the struct
 
 		for key, value := range query.(map[string]interface{}) {
 			switch key {
@@ -85,7 +80,6 @@ func (c *Query) SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
 		log.Error("don't find the suitable advertise for you: ", err)
 	}
 
-	//log.Info("search for your ads")
 	defer rows.Close()
 
 	// create a slice to store the satisfy ads with the query.Response type
@@ -93,8 +87,6 @@ func (c *Query) SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
 	satisfyADs := []param.Response{}
 
 	index := 1
-	// select only limit number of rows, the number is equal to limit and the ads start from off
-	// according to how many selected rows, create how many go routines to process the data
 	for rows.Next() {
 		if index >= c.Offset {
 			ad := param.Response{}
@@ -111,11 +103,75 @@ func (c *Query) SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
 		index++
 	}
 
-	//rows.Close()
-
 	// only return title and endAt to the client
 	// send the data to the client
 	return satisfyADs
+}
+
+// change the dbQuery depends on the query, sometimes it will miss some attributes like age,genger,country,platform
+// so need to check the query and change the dbQuery
+func (c *Query) createDBquery() string {
+	var conditions bytes.Buffer
+
+	// Default query
+	dbQuery := "SELECT title, end_at FROM advertisement"
+	onlyAge := true
+	noParam := true
+
+	// Append conditions if available
+
+	if c.Country != "" {
+		appendCondition(&conditions, "country", c.Country)
+		onlyAge = false
+		noParam = false
+	}
+	if c.Platform != "" {
+		appendCondition(&conditions, "platform", c.Platform)
+		onlyAge = false
+		noParam = false
+	}
+	if c.Gender != "" {
+		appendCondition(&conditions, "gender", c.Gender)
+		onlyAge = false
+		noParam = false
+	}
+
+	// conditions.WriteString("}'")
+
+	//If there are conditions, add them to the query
+	if conditions.Len() > 0 {
+		dbQuery += " WHERE conditions @> '{" + conditions.String() + "}'"
+	}
+	if c.Age != "" {
+		noParam = false
+		if onlyAge {
+			dbQuery += " WHERE $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int"
+		} else {
+			dbQuery += " AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int"
+		}
+	}
+
+	if noParam {
+		dbQuery += " ORDER BY end_at ASC LIMIT $1 OFFSET $2"
+	} else {
+		dbQuery += " ORDER BY end_at ASC LIMIT $2 OFFSET $3"
+	}
+
+	return dbQuery
+}
+
+func appendCondition(conditions *bytes.Buffer, key, value string) {
+	// Append comma if necessary
+	if conditions.Len() > 0 {
+		conditions.WriteString(", ")
+	}
+
+	// Append condition
+	if key == "gender" {
+		conditions.WriteString(fmt.Sprintf(`"%s": "%s"`, key, value))
+	} else {
+		conditions.WriteString(fmt.Sprintf(`"%s": ["%s"]`, key, value))
+	}
 }
 
 func (c *Query) CheckTheAdsWithQuery(job *work.Job) error {
@@ -127,11 +183,9 @@ func (c *Query) CheckTheAdsWithQuery(job *work.Job) error {
 		fmt.Println("get the database failed: ", err)
 	}
 
-	dbQuery := `SELECT title, end_at FROM advertisement WHERE conditions @> '{"country": ["` + c.Country + `"], "platform": ["` + c.Platform + `"], "gender": "` + c.Gender + `"}'
-	AND $1::int BETWEEN (conditions->>'ageStart')::int AND (conditions->>'ageEnd')::int ORDER BY end_at ASC LIMIT $2 OFFSET $3`
+	dbQuery := c.createDBquery()
 
 	Ads := c.SearchForYourAds(dbQuery, db)
-	// set this result as a value in the redis
 
 	// set these Ads in the redis
 	conn := redisPool.Get()
@@ -142,11 +196,11 @@ func (c *Query) CheckTheAdsWithQuery(job *work.Job) error {
 	// convert Ads to json string
 	AdsJson, err := json.Marshal(Ads)
 	if err != nil {
-		return err	
+		return err
 	}
 	// set the ttl for the key to 30mins if timeout, the key will be deleted
 	_, err = conn.Do("SET", key, AdsJson, "EX", 30*60)
-	
+
 	if err != nil {
 		return err
 	}
@@ -161,7 +215,8 @@ func (query Query) GenerateHash() string {
 }
 
 func main() {
-	pool := work.NewWorkerPool(Query{}, 300, "query_namespace", redisPool)
+	log.Info("Starting worker")
+	pool := work.NewWorkerPool(Query{}, 5000, "query_namespace", redisPool)
 
 	// Add middleware that will be executed for each job
 	pool.Middleware((*Query).Log)
