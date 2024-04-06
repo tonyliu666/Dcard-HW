@@ -23,7 +23,7 @@ var redisPool = &redis.Pool{
 	MaxIdle:     3,
 	IdleTimeout: 3 * time.Second,
 	Dial: func() (redis.Conn, error) {
-		return redis.Dial("tcp", "redis:6379")
+		return redis.Dial("tcp", ":6379")
 	},
 }
 
@@ -74,12 +74,16 @@ func (c *Query) FindQuery(job *work.Job, next work.NextMiddlewareFunc) error {
 }
 
 func (c *Query) SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
-	rows, err := db.Query(dbQuery, c.Age, c.Limit, c.Offset)
-
+	var rows *sql.Rows
+	var err error
+	if c.Age == "" {
+		rows, err = db.Query(dbQuery, c.Limit, c.Offset)
+	} else {
+		rows, err = db.Query(dbQuery, c.Age, c.Limit, c.Offset)
+	}
 	if err != nil {
 		log.Error("don't find the suitable advertise for you: ", err)
 	}
-
 	defer rows.Close()
 
 	// create a slice to store the satisfy ads with the query.Response type
@@ -87,12 +91,14 @@ func (c *Query) SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
 	satisfyADs := []param.Response{}
 
 	index := 1
+	// select only limit number of rows, the number is equal to limit and the ads start from off
+	// according to how many selected rows, create how many go routines to process the data
 	for rows.Next() {
 		if index >= c.Offset {
 			ad := param.Response{}
 			err := rows.Scan(&ad.Title, &ad.EndAt)
 			if err != nil {
-				log.Error("database scan error: ", err)
+				log.Error(err)
 			}
 			satisfyADs = append(satisfyADs, ad)
 			// if the length of the satisfyADs is equal to the limit, break the loop
@@ -103,14 +109,12 @@ func (c *Query) SearchForYourAds(dbQuery string, db *sql.DB) []param.Response {
 		index++
 	}
 
-	// only return title and endAt to the client
-	// send the data to the client
 	return satisfyADs
 }
 
 // change the dbQuery depends on the query, sometimes it will miss some attributes like age,genger,country,platform
 // so need to check the query and change the dbQuery
-func (c *Query) createDBquery() string {
+func (c *Query) CreateDBquery() string {
 	var conditions bytes.Buffer
 
 	// Default query
@@ -183,7 +187,11 @@ func (c *Query) CheckTheAdsWithQuery(job *work.Job) error {
 		fmt.Println("get the database failed: ", err)
 	}
 
-	dbQuery := c.createDBquery()
+	log.Info("query: ", c)
+
+	dbQuery := c.CreateDBquery()
+
+	log.Info("dbQuery: ", dbQuery)
 
 	Ads := c.SearchForYourAds(dbQuery, db)
 
