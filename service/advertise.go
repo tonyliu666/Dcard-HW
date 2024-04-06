@@ -357,7 +357,7 @@ func GetADsWithConditions(c *gin.Context) {
 	}
 
 	//if the number of concurrent requests is over 3000, then send the query to the redis server
-	if GetADsCounter >= 5000 {
+	if GetADsCounter >= 1000 {
 		Enqueuer.EnqueueUnique("searchForYourAds", work.Q{"query": query})
 		GetADsCounter--
 		c.JSON(202, gin.H{

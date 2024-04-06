@@ -109,7 +109,7 @@ func TestGetADsWithConditions(t *testing.T) {
 	}
 
 	redisPool := &redis.Pool{
-		MaxActive:   10000,
+		MaxActive:   3000,
 		MaxIdle:     3,
 		IdleTimeout: 3 * time.Second,
 		Dial: func() (redis.Conn, error) {
