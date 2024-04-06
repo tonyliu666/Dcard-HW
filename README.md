@@ -5,9 +5,9 @@ environment:
 **docker compose version**: Docker Compose version v2.18.1 on Mac
 If you use Windows or Linux, you can use Docker Compose version v2.26.1
 
-1. first, run **docker build -t dcard:latest .** on the redis branch
-2. second, run **docker build -t dcard-background:latest  .** on the worker branch 
-3. And finally run **docker compose up -d** on the redis branch
+1. first, run **docker build -t dcard:latest .** in the folder corresponding to the redis branch
+2. second, run **docker build -t dcard-background:latest  .** in the folder corresponding to the worker branch 
+3. And finally run **docker compose up -d** in the folder corresponding to the redis branch
 
 
 ### Test this api: 
@@ -25,11 +25,11 @@ or
 
 For post request, you can create a post request with the body like this: 
 > curl -X POST -H "Content-Type: application/json" -d '{
-  "title": "AD256",
-  "startAt": "2024-01-30T04:23:10.000Z",
+  "title": "AD3086",
+  "startAt": "2024-01-29T04:23:10.000Z",
   "endAt": "2024-03-31T09:25:30.000Z",
   "conditions": {
-    "ageStart": 40,
+    "ageStart": 34,
     "ageEnd": 55,
     "country": [
       "TW",
@@ -40,7 +40,8 @@ For post request, you can create a post request with the body like this:
       "ios"
     ]
   }
-}'
+}' http://localhost:8081/api/v1/ad
+
 * It's the same as the example listed on the assignment
 
 ### performance
